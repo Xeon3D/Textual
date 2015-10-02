@@ -37,7 +37,7 @@
 
 #import "TextualApplication.h"
 
-typedef enum TPCPreferencesKeyReloadActionMask : NSInteger {
+typedef NS_ENUM(NSUInteger, TPCPreferencesKeyReloadActionMask) {
 	TPCPreferencesKeyReloadDockIconBadgesAction							= 1 << 0,
 	TPCPreferencesKeyReloadHighlightKeywordsAction						= 1 << 1,
 	TPCPreferencesKeyReloadHighlightLoggingAction						= 1 << 2,
@@ -55,15 +55,15 @@ typedef enum TPCPreferencesKeyReloadActionMask : NSInteger {
 	TPCPreferencesKeyReloadTextDirectionAction							= 1 << 14,
 	TPCPreferencesKeyReloadTextFieldFontSizeAction						= 1 << 15,
 	TPCPreferencesKeyReloadTextFieldSegmentedControllerOriginAction		= 1 << 16
-} TPCPreferencesKeyReloadActionMask;
+};
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 TEXTUAL_EXTERN NSString * const TPCPreferencesCloudSyncKeyValueStoreServicesDefaultsKey;
 TEXTUAL_EXTERN NSString * const TPCPreferencesCloudSyncKeyValueStoreServicesLimitedToServersDefaultsKey;
 #endif
 
 @interface TPCPreferences (TPCPreferencesCloudSyncExtension)
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 + (BOOL)syncPreferencesToTheCloud;
 + (BOOL)syncPreferencesToTheCloudLimitedToServers;
 #endif

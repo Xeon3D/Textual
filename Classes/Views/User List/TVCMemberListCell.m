@@ -95,6 +95,17 @@
 	}
 		
 	[self updateUserMarkBadge:isSelected];
+
+	[self populateAccessibilityDescriptions];
+}
+
+- (void)populateAccessibilityDescriptions
+{
+	IRCUser *associatedUser = [self memberPointer];
+
+	NSString *nickname = [associatedUser nickname];
+
+	[XRAccessibility setAccessibilityValueDescription:BLS(1277, nickname) forObject:[[self textField] cell]];
 }
 
 #pragma mark -
@@ -253,7 +264,7 @@
 	
 	NSDictionary *attributes = @{NSForegroundColorAttributeName : textColor, NSFontAttributeName : textFont};
 	
-	NSAttributedString *mcstring = [NSAttributedString stringWithBase:badgeString attributes:attributes];
+	NSAttributedString *mcstring = [NSAttributedString attributedStringWithString:badgeString attributes:attributes];
 	
 	return mcstring;
 }
@@ -575,7 +586,7 @@
     [userInfoPopover showRelativeToRect:cellFrame
                                  ofView:mainWindowMemberList()
                           preferredEdge:NSMaxXEdge];
-	
+
 	[mainWindowTextField() focus]; // Add focus back to text field.
 }
 

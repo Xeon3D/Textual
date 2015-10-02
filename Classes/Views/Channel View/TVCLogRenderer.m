@@ -80,6 +80,7 @@ NSString * const TVCLogRendererResultsOriginalBodyWithoutEffectsAttribute		= @"T
 #define _rendererBackgroundColorAttribute		(1 << 24)
 #define _rendererConversationTrackerAttribute	(1 << 23)
 #define _rendererKeywordHighlightAttribute		(1 << 22)
+#define _rendererStrikethroughFormatAttribute	(1 << 21)
 
 #define _backgroundColorMask	(0xF0)
 #define _textColorMask			(0x0F)
@@ -87,6 +88,7 @@ NSString * const TVCLogRendererResultsOriginalBodyWithoutEffectsAttribute		= @"T
 									_rendererBoldFormatAttribute |				\
 									_rendererUnderlineFormatAttribute |			\
 									_rendererItalicFormatAttribute |			\
+									_rendererStrikethroughFormatAttribute |		\
 									_rendererTextColorAttribute |				\
 									_rendererBackgroundColorAttribute			\
 								)
@@ -181,7 +183,9 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 	UniChar dest[length];
 	UniChar source[length];
 
-	CFStringGetCharacters((__bridge CFStringRef)_body, CFRangeMake(0, length), source);
+	for (NSInteger i = 0; i < length; i++) {
+		source[i] = [_body characterAtIndex:i];
+	}
 
 	for (NSInteger i = 0; i < length; i++) {
 		UniChar c = source[i];
@@ -295,6 +299,16 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 
 					continue;
 				}
+				case IRCTextFormatterStrikethroughEffectCharacter:
+				{
+					if (currentAttr & _rendererStrikethroughFormatAttribute) {
+						currentAttr &= ~_rendererStrikethroughFormatAttribute;
+					} else {
+						currentAttr |= _rendererStrikethroughFormatAttribute;
+					}
+
+					continue;
+				}
 				case IRCTextFormatterUnderlineEffectCharacter:
 				{
 					if (currentAttr & _rendererUnderlineFormatAttribute) {
@@ -377,6 +391,8 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 	if (renderLinks) {
 		NSMutableDictionary *urlAry = [NSMutableDictionary dictionary];
 
+		NSMutableArray *matchedEntries = [NSMutableArray array];
+
 		NSArray *urlAryRanges = [TLOLinkParser locatedLinksForString:_body];
 
 		for (NSArray *rn in urlAryRanges) {
@@ -391,13 +407,19 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 				/* Build unique list of URLs by using them as keys. */
 				NSString *matchedURL = rn[1];
 
-				NSString *hashedValue = [matchedURL md5];
+				if ([matchedEntries containsObject:matchedURL] == NO) {
+					[matchedEntries addObject:matchedURL];
 
-				if (urlAry[hashedValue] == nil) {
-					urlAry[hashedValue] = matchedURL;
+					NSString *hashedValue = [NSString stringWithUUID];
+
+					if (urlAry[hashedValue] == nil) {
+						urlAry[hashedValue] = matchedURL;
+					}
 				}
 			}
 		}
+
+		matchedEntries = nil;
 
 		_outputDictionary[TVCLogRendererResultsRangesOfAllLinksInBodyAttribute] = urlAryRanges;
 		_outputDictionary[TVCLogRendererResultsUniqueListOfAllLinksInBodyAttribute] = urlAry;
@@ -775,6 +797,8 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 
 		if (attrArray & _rendererBoldFormatAttribute) {
 			boldItalic = [RZFontManager() convertFont:boldItalic toHaveTrait:NSBoldFontMask];
+
+			[body addAttribute:IRCTextFormatterBoldAttributeName value:@(YES) range:r];
 		}
 
 		if (attrArray & _rendererItalicFormatAttribute) {
@@ -782,19 +806,31 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 
             if ([boldItalic fontTraitSet:NSItalicFontMask] == NO) {
                 boldItalic = [boldItalic convertToItalics];
-            }
+			}
+			
+			[body addAttribute:IRCTextFormatterItalicAttributeName value:@(YES) range:r];
         }
 
 		if (boldItalic) {
 			[body addAttribute:NSFontAttributeName value:boldItalic range:r];
 		}
 
+		if (attrArray & _rendererStrikethroughFormatAttribute) {
+			[body addAttribute:IRCTextFormatterStrikethroughAttributeName value:@(YES) range:r];
+
+			[body addAttribute:NSStrikethroughStyleAttributeName value:@(NSUnderlineStyleSingle) range:r];
+		}
+
 		if (attrArray & _rendererUnderlineFormatAttribute) {
+			[body addAttribute:IRCTextFormatterUnderlineAttributeName value:@(YES) range:r];
+
 			[body addAttribute:NSUnderlineStyleAttributeName value:@(NSUnderlineStyleSingle) range:r];
 		}
 
 		if (attrArray & _rendererTextColorAttribute) {
 			NSInteger colorCode = (attrArray & _textColorMask);
+
+			[body addAttribute:IRCTextFormatterForegroundColorAttributeName value:@(colorCode) range:r];
 
 			[body addAttribute:NSForegroundColorAttributeName value:[TVCLogRenderer mapColorCode:colorCode] range:r];
 		} else {
@@ -805,6 +841,8 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 
 		if (attrArray & _rendererBackgroundColorAttribute) {
 			NSInteger colorCode = ((attrArray & _backgroundColorMask) >> 4);
+
+			[body addAttribute:IRCTextFormatterBackgroundColorAttributeName value:@(colorCode) range:r];
 
 			[body addAttribute:NSBackgroundColorAttributeName value:[TVCLogRenderer mapColorCode:colorCode] range:r];
 		}
@@ -848,11 +886,15 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 			if ([_controller inlineImagesEnabledForView]) {
 				NSDictionary *urlMatches = [_outputDictionary dictionaryForKey:TVCLogRendererResultsUniqueListOfAllLinksInBodyAttribute];
 
-				NSString *hashedValue = [templateTokens[@"anchorLocation"] md5];
+				for (NSString *hashedValue in urlMatches) {
+					NSString *anchorLink = urlMatches[hashedValue];
 
-				if ([urlMatches containsKey:hashedValue]) {
-					templateTokens[@"anchorInlineImageAvailable"] = @(YES);
-					templateTokens[@"anchorInlineImageUniqueID"] = hashedValue;
+					if (NSObjectsAreEqual(anchorLink, templateTokens[@"anchorLocation"])) {
+						templateTokens[@"anchorInlineImageAvailable"] = @(YES);
+						templateTokens[@"anchorInlineImageUniqueID"] = hashedValue;
+
+						break;
+					}
 				}
 			}
 		}
@@ -932,6 +974,10 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
 
 		if (attrArray & _rendererItalicFormatAttribute) {
 			templateTokens[@"fragmentIsItalicized"] = @(YES);
+		}
+
+		if (attrArray & _rendererStrikethroughFormatAttribute) {
+			templateTokens[@"fragmentIsStruckthrough"] = @(YES);
 		}
 
 		if (attrArray & _rendererUnderlineFormatAttribute) {
@@ -1190,43 +1236,6 @@ static NSInteger getNextAttributeRange(attr_t *attrBuf, NSInteger start, NSInteg
     }
 
     return escaped;
-}
-
-+ (NSInteger)mapColorValue:(NSColor *)color
-{
-	NSArray *possibleColors = [NSColor possibleFormatterColors];
-
-	if ([color numberOfComponents] < 4) {
-        color = [color colorUsingColorSpace:[NSColorSpace deviceRGBColorSpace]];
-    }
-    
-    CGFloat _redc   = [color redComponent];
-    CGFloat _bluec  = [color blueComponent];
-    CGFloat _greenc = [color greenComponent];
-    CGFloat _alphac = [color alphaComponent];
-
-    for (NSInteger i = 0; i <= 15; i++) {
-        NSColor *mapped = possibleColors[i];
-
-        if ([mapped numberOfComponents] == 4) {
-            CGFloat redc   = [mapped redComponent];
-            CGFloat bluec  = [mapped blueComponent];
-            CGFloat greenc = [mapped greenComponent];
-            CGFloat alphac = [mapped alphaComponent];
-
-            if (TXDirtyCGFloatMatch(_redc, redc)     && TXDirtyCGFloatMatch(_bluec, bluec) &&
-                TXDirtyCGFloatMatch(_greenc, greenc) && TXDirtyCGFloatMatch(_alphac, alphac)) {
-
-                return i;
-            }
-        } else {
-            if ([color isEqual:mapped]) {
-                return i;
-            }
-        }
-    }
-
-	return -1;
 }
 
 + (NSColor *)mapColorCode:(NSInteger)colorCode

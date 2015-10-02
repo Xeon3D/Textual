@@ -62,36 +62,34 @@
 	[self setDelegate:self];
 }
 
-- (NSString *)actualValue
+- (NSString *)predefinedSelectionValue
 {
 	if (self.lastOperationWasPredefinedSelection == NO) {
-		return [self stringValue];
-	} else {
-		NSInteger selectedItemIndex = [self indexOfSelectedItem];
+		return nil;
+	}
 
-		if (selectedItemIndex > -1) {
-			return [self itemObjectValueAtIndex:selectedItemIndex];
-		} else {
-			return NSStringEmptyPlaceholder;
-		}
+	NSInteger selectedItemIndex = [self indexOfSelectedItem];
+
+	if (selectedItemIndex > -1) {
+		return [self itemObjectValueAtIndex:selectedItemIndex];
+	} else {
+		return nil;
 	}
 }
 
 - (NSString *)value
 {
-	NSString *stringValue = [self actualValue];
-	
-	if (self.stringValueUsesOnlyFirstToken) {
-		stringValue = [stringValue trim];
-		
-		NSInteger spacePosition = [stringValue stringPosition:NSStringWhitespacePlaceholder];
-		
-		if (spacePosition >= 1) {
-			stringValue = [stringValue substringToIndex:spacePosition];
-		}
-	} else {
-		if (self.stringValueIsTrimmed) {
-			stringValue = [stringValue trim];
+	NSString *stringValue = [self predefinedSelectionValue];
+
+	if (stringValue == nil) {
+		if (self.stringValueUsesOnlyFirstToken) {
+			stringValue = [self trimmedFirstTokenStringValue];
+		} else {
+			stringValue = [self stringValue];
+
+			if (self.stringValueIsTrimmed) {
+				stringValue = [stringValue trim];
+			}
 		}
 	}
 
@@ -187,17 +185,28 @@
 
 - (void)performValidation
 {
-	if (NSObjectIsEmpty([self actualValue]) == NO) {
-		if (self.validationBlock) {
-			self.cachedValidValue = self.validationBlock([self actualValue]);
-		} else {
-			self.cachedValidValue = YES;
-		}
+	/* If a predefined selection is selected, then consider the value
+	 valid no matter what because it is a valid WE defined. */
+	NSString *predefinedSelectionValue = [self predefinedSelectionValue];
+
+	if (predefinedSelectionValue) {
+		self.cachedValidValue = YES;
 	} else {
-		if (self.performValidationWhenEmpty) {
-			self.cachedValidValue = self.validationBlock([self actualValue]);
+		/* Perform validation on user entered string value */
+		NSString *validationValue = [self stringValue];
+
+		if (NSObjectIsEmpty(validationValue) == NO) {
+			if (self.validationBlock) {
+				self.cachedValidValue = self.validationBlock(validationValue);
+			} else {
+				self.cachedValidValue = YES;
+			}
 		} else {
-			self.cachedValidValue = (self.stringValueIsInvalidOnEmpty == NO);
+			if (self.performValidationWhenEmpty) {
+				self.cachedValidValue = self.validationBlock(validationValue);
+			} else {
+				self.cachedValidValue = (self.stringValueIsInvalidOnEmpty == NO);
+			}
 		}
 	}
 }
@@ -273,8 +282,10 @@
 {
 	/* Look at all those magic numbers... */
 	NSInteger rightEdge = (NSMaxX(aRect) - 40.0);
-	
-	if ([XRSystemInformation isUsingOSXYosemiteOrLater]) {
+
+	if ([XRSystemInformation isUsingOSXElCapitanOrLater]) {
+		return NSMakeRect(rightEdge, 5.0, 14.0, 14.0);
+	} else if ([XRSystemInformation isUsingOSXYosemiteOrLater]) {
 		return NSMakeRect(rightEdge, 6.0, 14.0, 14.0);
 	} else {
 		return NSMakeRect(rightEdge, 7.0, 14.0, 14.0);

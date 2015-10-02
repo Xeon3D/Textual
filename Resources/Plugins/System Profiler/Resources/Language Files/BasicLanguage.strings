@@ -48,15 +48,10 @@
 "BasicLanguage[1008]" = " \002Graphics:\002 %@ \002•\002";
 "BasicLanguage[1009]" = " \002Screen Resolution:\002 %.0f x %.0f \002•\002";
 "BasicLanguage[1010]" = " \002Screen Resolution:\002 %.0f x %.0f (HiDPI Mode) \002•\002";
-"BasicLanguage[1012]" = " \002OS:\002 OS X %1$@ (%2$@) (Build %3$@)";
+"BasicLanguage[1012]" = " \002OS:\002 %1$@ (Version %2$@, Build %3$@)";
 
 "BasicLanguage[1013]" = "%@";
 "BasicLanguage[1014]" = ", %@";
-
-"BasicLanguage[1015]" = "Lion";
-"BasicLanguage[1016]" = "Mountain Lion";
-"BasicLanguage[1017]" = "Mavericks";
-"BasicLanguage[1052]" = "Yosemite";
 
 "BasicLanguage[1018]" = "%.2f GHz";
 "BasicLanguage[1019]" = "%.2f MHz"; // really?
@@ -77,20 +72,20 @@
 "BasicLanguage[1028]" = "Error: Unable to locate any network statistics.";
 
 /* /style/ command. */
-"BasicLanguage[1033]" = "\002Current Style:\002 %@ — \002Enviornment:\002 ";
-"BasicLanguage[1034]" = "\002Current Style:\002 %@ (Custom) — \002Enviornment:\002 ";
-"BasicLanguage[1035]" = "\002Current Style:\002 %@ (iCloud) — \002Enviornment:\002 ";
+"BasicLanguage[1033]" = "\002Current Style:\002 %@ — \002Environment:\002 ";
+"BasicLanguage[1034]" = "\002Current Style:\002 %@ (Custom) — \002Environment:\002 ";
+"BasicLanguage[1035]" = "\002Current Style:\002 %@ (iCloud) — \002Environment:\002 ";
 "BasicLanguage[1036]" = "Light mode in Textual, ";
 "BasicLanguage[1037]" = "Dark mode in Textual, ";
 "BasicLanguage[1038]" = "system wide aqua";
 "BasicLanguage[1039]" = "system wide graphite";
-"BasicLanguage[1050]" = ", and light mode in Yosemite";
-"BasicLanguage[1051]" = ", and dark mode in Yosemite";
+"BasicLanguage[1050]" = ", and light mode on %@";
+"BasicLanguage[1051]" = ", and dark mode on %@";
 
 /* /screens/ command. */
 "BasicLanguage[1040]" = "\002Screen Resolution:\002 %1$.0f x %2$.0f";
 "BasicLanguage[1041]" = "\002Screen Resolutions:\002 Monitor %1$ld: %2$.0f x %3$.0f";
-"BasicLanguage[1042]" = "; Monitor %1$ld: %2$.0f x %2$.0f";
+"BasicLanguage[1042]" = "; Monitor %1$ld: %2$.0f x %3$.0f";
 "BasicLanguage[1043]" = " (HiDPI Mode)";
 
 /* Misc., one line commands. */

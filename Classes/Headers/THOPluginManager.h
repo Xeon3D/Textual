@@ -54,12 +54,15 @@
 @property (readonly, copy) NSArray *supportedUserInputCommands;
 @property (readonly, copy) NSArray *supportedServerInputCommands;
 
-@property (readonly, strong) id supportedAppleScriptCommands;
+@property (readonly, copy) id supportedAppleScriptCommands;
 - (id)supportedAppleScriptCommands:(BOOL)returnPathInfo;
 
 @property (readonly, copy) NSArray *pluginsWithPreferencePanes;
 
-- (NSArray *)outputRulesForCommand:(NSString *)command;
+@property (readonly, copy) NSArray *pluginOutputSuppressionRules;
+
+/* Returns YES if at least one loaded plugin supports the feature. */
+- (BOOL)supportsFeature:(THOPluginItemSupportedFeatures)feature;
 
 - (void)findHandlerForOutgoingCommand:(NSString *)command
 						   scriptPath:(NSString **)scriptPath
@@ -82,13 +85,18 @@
 - (void)sendServerInputDataToBundles:(IRCClient *)client message:(IRCMessage *)message;
 - (void)sendUserInputDataToBundles:(IRCClient *)client message:(NSString *)message command:(NSString *)command;
 
+- (void)postNewMessageEventForViewController:(TVCLogController *)viewController withObject:(THOPluginDidPostNewMessageConcreteObject *)messageObject;
+
 - (NSString *)postWillRenderMessageEvent:(NSString *)newMessage
 					   forViewController:(TVCLogController *)viewController
 								lineType:(TVCLogLineType)lineType
 							  memberType:(TVCLogLineMemberType)memberType;
 
-- (void)postNewMessageEventForViewController:(TVCLogController *)logController
-								 messageInfo:(NSDictionary *)messageInfo
-							   isThemeReload:(BOOL)isThemeReload
-							 isHistoryReload:(BOOL)isHistoryReload;
+- (BOOL)postReceivedPlainTextMessageEvent:(NSString *)text
+							   authoredBy:(IRCPrefix *)textAuthor
+							  destinedFor:(IRCChannel *)textDestination
+							   asLineType:(TVCLogLineType)lineType
+								 onClient:(IRCClient *)client
+							   receivedAt:(NSDate *)receivedAt
+							 wasEncrypted:(BOOL)wasEncrypted;
 @end

@@ -193,42 +193,6 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 #pragma mark -
 #pragma mark Socket Read & Write
 
-- (NSData *)readLineFromMutableData:(NSMutableData * __autoreleasing *)refString
-{
-	NSObjectIsEmptyAssertReturn(*refString, nil);
-	
-	NSInteger messageSubstringIndex = 0;
-	NSInteger messageDeleteIndex = 0;
-
-	NSRange _LFRange = [*refString rangeOfData:[NSData lineFeed] options:0 range:NSMakeRange(0, [*refString length])];
-	NSRange _CRRange = [*refString rangeOfData:[NSData carriageReturn] options:0 range:NSMakeRange(0, [*refString length])];
-
-	if (_LFRange.location == NSNotFound) {
-		/* If we do not have any line end for this fragment and the refString is not
-		 empty, then we save the remaining fragment for processing once we have more
-		 information. */
-
-		NSObjectIsEmptyAssertReturn(*refString, nil);
-
-		self.bufferOverflowString = *refString;
-	
-		return nil;
-	}
-
-	messageSubstringIndex = _LFRange.location;
-	messageDeleteIndex = (_LFRange.location + 1);
-
-	if ((_LFRange.location - 1) == _CRRange.location) {
-		messageSubstringIndex -= 1;
-	}
-	
-	NSData *readLine = [*refString subdataWithRange:NSMakeRange(0, messageSubstringIndex)];
-
-	[*refString replaceBytesInRange:NSMakeRange(0, messageDeleteIndex) withBytes:NULL length:0];
-
-	return readLine;
-}
-
 - (void)writeDataToSocket:(NSData *)data
 {
 	if (self.isConnected) {
@@ -239,7 +203,7 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 - (void)waitForData
 {
 	if (self.isConnected) {
-		[self.socketConnection readDataWithTimeout:(-1) tag:0];
+		[self.socketConnection readDataToData:[GCDAsyncSocket LFData] withTimeout:-1 tag:0];
 	}
 }
 
@@ -417,37 +381,33 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 
 - (void)completeReadForNormalData:(NSData *)data
 {
-	NSMutableData *readBuffer = nil;
+	id readData = data;
 
-	BOOL hasOverflowPrefix = ([self.bufferOverflowString length] > 0);
+	NSUInteger readDataTrimLength = 0;
 
-	if (hasOverflowPrefix) {
-		readBuffer = [self.bufferOverflowString mutableCopy];
-
-		self.bufferOverflowString = nil; // Destroy old overflow;
-
-		[readBuffer appendBytes:[data bytes] length:[data length]];
-	} else {
-		readBuffer = [data mutableCopy];
+	if ([data hasSuffixBytes:"\x0D\x0A" length:2]) {
+		readDataTrimLength = 2;
+	} else if ([data hasSuffixBytes:"\x0D" length:1]) {
+		readDataTrimLength = 1;
 	}
 
-	while (1 == 1) {
-		NSData *rdata = [self readLineFromMutableData:&readBuffer];
+	if (readDataTrimLength > 0) {
+		NSMutableData *mutableReadData = [readData mutableCopy];
 
-		if (rdata == nil) {
-			break;
-		}
+		[mutableReadData setLength:([mutableReadData length] - readDataTrimLength)];
 
-		NSString *sdata = [self convertFromCommonEncoding:rdata];
-
-		if (sdata == nil) {
-			break;
-		}
-
-		XRPerformBlockSynchronouslyOnMainQueue(^{
-			[self tcpClientDidReceiveData:sdata];
-		});
+		readData = mutableReadData;
 	}
+
+	NSString *sdata = [self convertFromCommonEncoding:readData];
+
+	if (sdata == nil) {
+		return;
+	}
+
+	XRPerformBlockSynchronouslyOnMainQueue(^{
+		[self tcpClientDidReceiveData:sdata];
+	});
 }
 
 - (void)didReadNormalData:(NSData *)data
@@ -657,87 +617,22 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 	}
 }
 
-- (const struct sockaddr *)socksProxyResolvedAddress
-{
-	NSData *resolvedAddress4 = nil;
-	NSData *resolvedAddress6 = nil;
-
-	NSArray *resolvedAddresses = [GCDAsyncSocket lookupHost:self.serverAddress port:self.serverPort error:NULL];
-
-	for (NSData *address in resolvedAddresses) {
-		if (resolvedAddress4 == nil && [GCDAsyncSocket isIPv4Address:address]) {
-			resolvedAddress4 = address;
-		} else if (resolvedAddress6 == nil && [GCDAsyncSocket isIPv6Address:address]) {
-			resolvedAddress6 = address;
-		}
-	}
-
-	if ((resolvedAddress4        && resolvedAddress6 && self.connectionPrefersIPv6) ||
-		(resolvedAddress4 == nil && resolvedAddress6))
-	{
-		return [resolvedAddress6 bytes];
-	}
-
-	if (        resolvedAddress4) {
-		return [resolvedAddress4 bytes];
-	}
-
-	return NULL;
-}
-
-- (BOOL)socksProxyResolvedAddress:(NSString **)resolvedAddress resolvedPort:(uint16_t *)resolvedPort resolvedAddressIsIPv6:(BOOL *)resolvedAddressIsIPv6
-{
-	const struct sockaddr *destinationAddress = [self socksProxyResolvedAddress];
-
-	if (destinationAddress == NULL) {
-		return NO;
-	}
-
-	NSData *destinationAddressData = [NSData dataWithBytes:destinationAddress length:destinationAddress->sa_len];
-
-	NSString *connectionAddress = [GCDAsyncSocket hostFromAddress:destinationAddressData];
-
-	uint16_t connectionPort = [GCDAsyncSocket portFromAddress:destinationAddressData];
-
-	if ( resolvedAddress) {
-		*resolvedAddress = connectionAddress;
-	}
-
-	if ( resolvedPort) {
-		*resolvedPort = connectionPort;
-	}
-
-	if ( resolvedAddressIsIPv6) {
-		*resolvedAddressIsIPv6 = (destinationAddress->sa_family == AF_INET6);
-	}
-
-	return YES;
-}
-
 - (void)httpProxyOpen
 {
 	/* Build connect command that will be sent to the HTTP server */
-	NSString *connectionAddress = nil;
+	NSString *connectionAddress = self.serverAddress;
 
-	uint16_t connectionPort = 0;
-
-	BOOL connectUsingIPv6 = NO;
-
-	if ([self socksProxyResolvedAddress:&connectionAddress resolvedPort:&connectionPort resolvedAddressIsIPv6:&connectUsingIPv6] == NO) {
-		[self closeSocketWithError:@"Error: Unable to resolve destination address"];
-
-		return; // Cancel this operation...
-	}
+	NSUInteger connectionPort = self.serverPort;
 
 	NSString *combinedDestinationAddress = nil;
 
-	if (connectUsingIPv6) {
-		combinedDestinationAddress = [NSString stringWithFormat:@"[%@]:%hu", connectionAddress, connectionPort];
+	if ([connectionAddress isIPv6Address]) {
+		combinedDestinationAddress = [NSString stringWithFormat:@"[%@]:%lu", connectionAddress, connectionPort];
 	} else {
-		combinedDestinationAddress = [NSString stringWithFormat:@"%@:%hu", connectionAddress, connectionPort];
+		combinedDestinationAddress = [NSString stringWithFormat:@"%@:%lu", connectionAddress, connectionPort];
 	}
 
-	NSString *connectCommand = [NSString stringWithFormat:@"CONNECT %@:%lu HTTP/1.1\x0d\x0a\x0d\x0a", combinedDestinationAddress];
+	NSString *connectCommand = [NSString stringWithFormat:@"CONNECT %@ HTTP/1.1\x0d\x0a\x0d\x0a", combinedDestinationAddress];
 
 	/* Pass the data along to the HTTP server */
 	NSData *connectCommandData = [connectCommand dataUsingEncoding:NSASCIIStringEncoding];
@@ -817,6 +712,30 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 	}
 }
 
+- (NSString *)socks4ProxyResolvedAddress
+{
+	/* SOCKS4 proxies do not support anything other than IPv4 addresses 
+	 (unless you support SOCKS4a, which Textual does not) which means we
+	 perform manual DNS lookup for SOCKS4 and rely on end-point proxy to
+	 perform lookup when using other proxy types. */
+
+	NSData *resolvedAddress4 = nil;
+
+	NSArray *resolvedAddresses = [GCDAsyncSocket lookupHost:self.serverAddress port:self.serverPort error:NULL];
+
+	for (NSData *address in resolvedAddresses) {
+		if (resolvedAddress4 == nil && [GCDAsyncSocket isIPv4Address:address]) {
+			resolvedAddress4 = address;
+		}
+	}
+
+	if (resolvedAddress4) {
+		return [GCDAsyncSocket hostFromAddress:resolvedAddress4];
+	}
+
+	return nil;
+}
+
 - (void)socks4ProxyOpen
 {
 	[self socksProxyConnect];
@@ -850,36 +769,18 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 
 	BOOL isVersion4Socks = (self.proxyType == IRCConnectionSocketSocks4ProxyType);
 
-	/* Resolve the destination address here, rather than on the proxy, then
-	 modify the buffer size based on the type of address. */
-	const struct sockaddr *destinationAddress = [self socksProxyResolvedAddress];
+	NSString *connectionAddress = nil;
 
-	if (destinationAddress == NULL) {
-		[self closeSocketWithError:@"Error: Unable to resolve destination address"];
-
-		return; // Cancel this operation...
-	}
-
-	struct sockaddr_in destinationAddress4;
-	struct sockaddr_in6 destinationAddress6;
-
-	BOOL destinationAddressIsIPv6 = (destinationAddress->sa_family == AF_INET6);
-
-	if (destinationAddressIsIPv6) {
-		memcpy(&destinationAddress6, destinationAddress, sizeof(destinationAddress6));
+	if (isVersion4Socks) {
+		connectionAddress = [self socks4ProxyResolvedAddress];
 	} else {
-		memcpy(&destinationAddress4, destinationAddress, sizeof(destinationAddress4));
+		connectionAddress = self.serverAddress;
 	}
 
-	/* SOCKS4 does not support IPv6 address space, so we must disconnect
-	 if we only have an IPv6 address for the end user to access. */
-	if (destinationAddressIsIPv6) {
-		if (isVersion4Socks) {
-			[self closeSocketWithError:@"SOCKS4 Error: Cannot use an IPv6 address with a SOCKS4 proxy"];
+	NSData *connectionAddressBytes4 = [connectionAddress IPv4AddressBytes];
+	NSData *connectionAddressBytes6 = [connectionAddress IPv6AddressBytes];
 
-			return; // Cancel this operation...
-		}
-	}
+	uint16_t connectionPort = htons(self.serverPort);
 
 	/* Assemble the packet of data that will be sent */
 	NSMutableData *packetData = [NSMutableData data];
@@ -900,31 +801,46 @@ NSInteger const IRCConnectionSocketTorBrowserTypeProxyPort = 9150;
 	}
 
 	/* The address type for our destination */
-	/* We resolve our DNS before reaching this point so our
-	 address type will either be IPv4 or IPv6, not domain. */
 	if (isVersion4Socks == NO) {
-		if (destinationAddressIsIPv6) {
+		if (connectionAddressBytes6) {
 			[packetData appendBytes:"\x04" length:1];
-		} else {
+		} else if (connectionAddressBytes4) {
 			[packetData appendBytes:"\x01" length:1];
+		} else {
+			[packetData appendBytes:"\x03" length:1];
 		}
 	}
 
 	if (isVersion4Socks) {
-		/* Complete write out for SOCKS4 connections. */
-		[packetData appendBytes:&destinationAddress4.sin_port length:2];
-		[packetData appendBytes:&destinationAddress4.sin_addr length:4];
+		if (connectionAddressBytes4 == nil) {
+			[self closeSocketWithError:@"Error: SOCKS 4 proxies only support IPv4 addresses"];
 
-		[packetData appendBytes:"\x00" length:1];
-	} else {
-		/* Complete write out for SOCKS5 connections. */
-		if (destinationAddressIsIPv6) {
-			[packetData appendBytes:&destinationAddress6.sin6_addr length:16];
+			return;
 		} else {
-			[packetData appendBytes:&destinationAddress4.sin_addr.s_addr length:4];
+			[packetData appendBytes:&connectionPort length:2];
+
+			[packetData appendData:connectionAddressBytes4];
+
+			[packetData appendBytes:"\x00" length:1];
+		}
+	}
+	else // isVersion4Socks
+	{
+		if (connectionAddressBytes6) {
+			[packetData appendData:connectionAddressBytes6];
+		} else if (connectionAddressBytes4) {
+			[packetData appendData:connectionAddressBytes4];
+		} else {
+			NSData *connectionAddressBytes = [connectionAddress dataUsingEncoding:NSASCIIStringEncoding];
+
+			NSInteger connectionAddressLength = [connectionAddressBytes length];
+
+			[packetData appendBytes:&connectionAddressLength length:1];
+
+			[packetData appendBytes:[connectionAddressBytes bytes] length:connectionAddressLength];
 		}
 
-		[packetData appendBytes:&destinationAddress4.sin_port length:2];
+		[packetData appendBytes:&connectionPort length:2];
 	}
 
 	/* Write the packet to the socket */

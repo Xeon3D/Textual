@@ -38,9 +38,12 @@
 
 #import "TextualApplication.h"
 
+#import "THOPluginProtocolPrivate.h"
+
 @interface THOPluginManager ()
 @property (nonatomic, copy) NSArray *allLoadedBundles;
 @property (nonatomic, copy) NSArray *allLoadedPlugins;
+@property (nonatomic, assign) THOPluginItemSupportedFeatures supportedFeatures;
 @end
 
 NSString * const THOPluginProtocolCompatibilityMinimumVersion = @"5.0.0";
@@ -72,12 +75,14 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 @implementation THOPluginManager
 
 #pragma mark -
-#pragma mark Init.
+#pragma mark Init
 
 - (instancetype)init
 {
 	if ((self = [super init])) {
 		self.dispatchQueue = dispatch_queue_create("PluginManagerDispatchQueue", DISPATCH_QUEUE_SERIAL);
+
+		_supportedFeatures = 0;
 
 		return self;
 	}
@@ -93,12 +98,12 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 }
 
 #pragma mark -
-#pragma mark Retain & Release.
+#pragma mark Retain & Release
 
 - (void)loadPlugins
 {
 	XRPerformBlockAsynchronouslyOnQueue(self.dispatchQueue, ^{
-		if (self.allLoadedBundles) {
+		if (self.allLoadedBundles != nil) {
 			NSAssert(NO, @"-loadPlugins called more than one time.");
 		}
 
@@ -108,6 +113,7 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 						  nil];
 
 		NSMutableArray *loadedBundles = [NSMutableArray array];
+
 		NSMutableArray *loadedPlugins = [NSMutableArray array];
 
 		NSMutableDictionary *bundlesToLoad = [NSMutableDictionary dictionary];
@@ -137,7 +143,10 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 				BOOL bundleLoaded = [currPlugin loadBundle:currBundle];
 
 				if (bundleLoaded) {
+					[self updateSupportedFeaturesPropertyWithPlugin:currPlugin];
+
 					[loadedBundles addObject:currBundle];
+
 					[loadedPlugins addObject:currPlugin];
 				} else {
 					currPlugin = nil;
@@ -145,8 +154,9 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 			}
 		}
 
-		[self setAllLoadedBundles:loadedBundles];
-		[self setAllLoadedPlugins:loadedPlugins];
+		self.allLoadedBundles = loadedBundles;
+
+		self.allLoadedPlugins = loadedPlugins;
 	});
 }
 
@@ -157,13 +167,14 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 			[plugin sendDealloc];
 		}
 
-		[self setAllLoadedPlugins:nil];
-		[self setAllLoadedBundles:nil];
+		self.allLoadedBundles = nil;
+
+		self.allLoadedPlugins = nil;
 	});
 }
 
 #pragma mark -
-#pragma mark AppleScript Support.
+#pragma mark AppleScript Support
 
 - (id)supportedAppleScriptCommands
 {
@@ -197,6 +208,7 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 			NSString *fullpath = [path stringByAppendingPathComponent:file];
 
 			NSString *nameWoExtension = [file stringByDeletingPathExtension];
+
 			NSString *fileExtension = [file pathExtension];
 
 			if ([scriptExtensions containsObject:fileExtension] == NO) {
@@ -324,8 +336,8 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (void)maybeOpenExtrasInstallerDownloadURLForCommand:(NSString *)command
 {
-	BOOL download = [TLOPopupPrompts dialogWindowWithMessage:TXTLS(@"BasicLanguage[1236][2]", command)
-													   title:TXTLS(@"BasicLanguage[1236][1]")
+	BOOL download = [TLOPopupPrompts dialogWindowWithMessage:TXTLS(@"BasicLanguage[1236][2]")
+													   title:TXTLS(@"BasicLanguage[1236][1]", command)
 											   defaultButton:TXTLS(@"BasicLanguage[1236][3]")
 											 alternateButton:BLS(1009)
 											  suppressionKey:@"plugin_manager_reserved_command_dialog"
@@ -338,24 +350,56 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (void)openExtrasInstallerDownloadURL
 {
-	NSString *currentVersion = [TPCApplicationInfo applicationVersion];
+#if TEXTUAL_BUILT_INSIDE_SANDBOX == 1
+	NSString *installerURL = [RZMainBundle() pathForResource:@"Textual-Extras-MAS" ofType:@"pkg"];
+#else
+	NSString *installerURL = [RZMainBundle() pathForResource:@"Textual-Extras" ofType:@"pkg"];
+#endif
 
-	NSString *urlToOpen = [NSString stringWithFormat:@"https://www.codeux.com/textual/downloads/latestExtrasInstaller.download?version=%@", [currentVersion encodeURIFragment]];
-
-	[RZWorkspace() openURL:[NSURL URLWithString:urlToOpen]];
+	if (installerURL) {
+		[RZWorkspace() openFile:installerURL withApplication:@"Installer"];
+	}
 }
 
 #pragma mark -
-#pragma mark Extension Information.
+#pragma mark Extension Information
 
-/* Everything else. */
-- (NSArray *)outputRulesForCommand:(NSString *)command
+- (void)updateSupportedFeaturesPropertyWithPlugin:(THOPluginItem *)plugin
+{
+	if (plugin == nil) {
+		return;
+	}
+
+#define _ef(_feature)		if ([plugin supportsFeature:(_feature)] && [self supportsFeature:(_feature)] == NO) {		\
+								_supportedFeatures |= (_feature);														\
+							}
+
+	_ef(THOPluginItemSupportsInlineMediaManipulation)
+	_ef(THOPluginItemSupportsNewMessagePostedEvent)
+	_ef(THOPluginItemSupportsOutputSuppressionRules)
+	_ef(THOPluginItemSupportsPreferencePane)
+	_ef(THOPluginItemSupportsServerInputDataInterception)
+	_ef(THOPluginItemSupportsSubscribedServerInputCommands)
+	_ef(THOPluginItemSupportsSubscribedUserInputCommands)
+	_ef(THOPluginItemSupportsUserInputDataInterception)
+	_ef(THOPluginItemSupportsWillRenderMessageEvent)
+	_ef(THOPluginItemSupportsDidReceivePlainTextMessageEvent)
+
+#undef _ef
+}
+
+- (BOOL)supportsFeature:(THOPluginItemSupportedFeatures)feature
+{
+	return ((_supportedFeatures & feature) == feature);
+}
+
+- (NSArray *)pluginOutputSuppressionRules
 {
 	NSMutableArray *allRules = [NSMutableArray array];
 
 	for (THOPluginItem *plugin in self.allLoadedPlugins) {
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureOutputSuppressionRulesFlag]) {
-			NSArray *srules = [[plugin outputSuppressionRules] arrayForKey:command];
+		if ([plugin supportsFeature:THOPluginItemSupportsOutputSuppressionRules]) {
+			NSArray *srules = [plugin outputSuppressionRules];
 
 			if (srules) {
 				[allRules addObjectsFromArray:srules];
@@ -371,10 +415,12 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 	NSMutableArray *allCommands = [NSMutableArray array];
 	
 	for (THOPluginItem *plugin in self.allLoadedPlugins) {
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedUserInputCommandsNewStyleFlag] ||
-			[plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedUserInputCommandsOldStyleFlag])
-		{
-			[allCommands addObjectsFromArray:[plugin supportedUserInputCommands]];
+		if ([plugin supportsFeature:THOPluginItemSupportsSubscribedUserInputCommands]) {
+			NSArray *commands = [plugin supportedUserInputCommands];
+
+			if (commands) {
+				[allCommands addObjectsFromArray:commands];
+			}
 		}
 	}
 
@@ -386,10 +432,12 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 	NSMutableArray *allCommands = [NSMutableArray array];
 	
 	for (THOPluginItem *plugin in self.allLoadedPlugins) {
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedServerInputCommandsNewStyleFlag] ||
-			[plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedServerInputCommandsOldStyleFlag])
-		{
-			[allCommands addObjectsFromArray:[plugin supportedServerInputCommands]];
+		if ([plugin supportsFeature:THOPluginItemSupportsSubscribedServerInputCommands]) {
+			NSArray *commands = [plugin supportedServerInputCommands];
+
+			if (commands) {
+				[allCommands addObjectsFromArray:commands];
+			}
 		}
 	}
 
@@ -401,9 +449,7 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 	NSMutableArray *allExtensions = [NSMutableArray array];
 	
 	for (THOPluginItem *plugin in self.allLoadedPlugins) {
-		if ([plugin supportsFeature:THOPluginItemSupportedFeaturePreferencePaneNewStyleFlag] ||
-			[plugin supportsFeature:THOPluginItemSupportedFeaturePreferencePaneOldStyleFlag])
-		{
+		if ([plugin supportsFeature:THOPluginItemSupportsPreferencePane]) {
 			[allExtensions addObject:plugin];
 		}
 	}
@@ -419,34 +465,34 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 		NSString *path = [bundle bundlePath];
 
 		NSString *bundleName = [path lastPathComponent];
+
+		NSString *bundleNameWithoutExtension = [bundleName stringByDeletingPathExtension];
 		
-		[allPlugins addObjectWithoutDuplication:[bundleName stringByDeletingPathExtension]];
+		[allPlugins addObjectWithoutDuplication:bundleNameWithoutExtension];
 	}
 
 	return allPlugins;
 }
 
 #pragma mark -
-#pragma mark Talk.
+#pragma mark Talk
 
 - (void)sendUserInputDataToBundles:(IRCClient *)client message:(NSString *)message command:(NSString *)command
 {
-	XRPerformBlockAsynchronouslyOnQueue(self.dispatchQueue, ^{
-		NSString *cmdUpper = [command uppercaseString];
+	if (client == nil || message == nil || command == nil) {
+		return;
+	}
 
-		NSString *cmdLower = [command lowercaseString];
+	XRPerformBlockAsynchronouslyOnQueue(self.dispatchQueue, ^{
+		NSString *uppercaseCommand = [command uppercaseString];
+
+		NSString *lowercaseCommand = [command lowercaseString];
 		
 		for (THOPluginItem *plugin in self.allLoadedPlugins)
 		{
-			if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedUserInputCommandsNewStyleFlag] ||
-				[plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedUserInputCommandsOldStyleFlag])
-			{
-				if ([[plugin supportedUserInputCommands] containsObject:cmdLower]) {
-					if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedUserInputCommandsNewStyleFlag]) {
-						[[plugin primaryClass] userInputCommandInvokedOnClient:client commandString:cmdUpper messageString:message];
-					} else {
-						[[plugin primaryClass] messageSentByUser:client message:message command:cmdUpper];
-					}
+			if ([plugin supportsFeature:THOPluginItemSupportsSubscribedUserInputCommands]) {
+				if ([[plugin supportedUserInputCommands] containsObject:lowercaseCommand]) {
+					[[plugin primaryClass] userInputCommandInvokedOnClient:client commandString:uppercaseCommand messageString:message];
 				}
 			}
 		}
@@ -455,38 +501,73 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (void)sendServerInputDataToBundles:(IRCClient *)client message:(IRCMessage *)message
 {
+	if (client == nil || message == nil) {
+		return;
+	}
+
 	XRPerformBlockAsynchronouslyOnQueue(self.dispatchQueue, ^{
-		NSString *cmdLower = [[message command] lowercaseString];
+		NSString *lowercaseCommand = [[message command] lowercaseString];
 
-		NSDictionary *senderData = @{
-			THOPluginProtocolDidReceiveServerInputSenderIsServerAttribute	: @([[message sender] isServer]),
-			THOPluginProtocolDidReceiveServerInputSenderHostmaskAttribute	: NSDictionaryNilValue([message senderHostmask]),
-			THOPluginProtocolDidReceiveServerInputSenderNicknameAttribute	: NSDictionaryNilValue([message senderNickname]),
-			THOPluginProtocolDidReceiveServerInputSenderUsernameAttribute	: NSDictionaryNilValue([message senderUsername]),
-			THOPluginProtocolDidReceiveServerInputSenderAddressAttribute	: NSDictionaryNilValue([message senderAddress])
-		};
+		NSDictionary *senderData = nil;
+		NSDictionary *messageData = nil;
 
-		NSDictionary *messageData = @{
-			THOPluginProtocolDidReceiveServerInputMessageReceivedAtTimeAttribute    :   [message receivedAt],
-			THOPluginProtocolDidReceiveServerInputMessageParamatersAttribute		:   [message params],
-			THOPluginProtocolDidReceiveServerInputMessageNumericReplyAttribute		: @([message numericReply]),
-			THOPluginProtocolDidReceiveServerInputMessageCommandAttribute			:   [message command],
-			THOPluginProtocolDidReceiveServerInputMessageSequenceAttribute			: NSDictionaryNilValue([message sequence]),
-			THOPluginProtocolDidReceiveServerInputMessageNetworkAddressAttribute	: NSDictionaryNilValue([client networkAddress]),
-			THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribute		: NSDictionaryNilValue([client networkName])
-		};
-		
+		THOPluginDidReceiveServerInputConcreteObject *messageObject = [THOPluginDidReceiveServerInputConcreteObject new];
+
+		[messageObject setSenderIsServer:[message senderIsServer]];
+
+		[messageObject setSenderNickname:[message senderNickname]];
+		[messageObject setSenderUsername:[message senderUsername]];
+		[messageObject setSenderAddress:[message senderAddress]];
+		[messageObject setSenderHostmask:[message senderHostmask]];
+
+		[messageObject setReceivedAt:[message receivedAt]];
+
+		[messageObject setMessageSequence:[message sequence]];
+		[messageObject setMessageParamaters:[message params]];
+
+		[messageObject setMessageCommand:[message command]];
+		[messageObject setMessageCommandNumeric:[message commandNumeric]];
+
+		[messageObject setNetworkAddress:[client networkAddress]];
+		[messageObject setNetworkName:[client networkName]];
+
 		for (THOPluginItem *plugin in self.allLoadedPlugins)
 		{
-			if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedServerInputCommandsNewStyleFlag] ||
-				[plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedServerInputCommandsOldStyleFlag])
-			{
-				if ([[plugin supportedServerInputCommands] containsObject:cmdLower]) {
-					if ([plugin supportsFeature:THOPluginItemSupportedFeatureSubscribedServerInputCommandsNewStyleFlag]) {
-						[[plugin primaryClass] didReceiveServerInputOnClient:client senderInformation:senderData messageInformation:messageData];
-					} else {
-						[[plugin primaryClass] messageReceivedByServer:client sender:senderData message:messageData];
+			if ([plugin supportsFeature:THOPluginItemSupportsSubscribedServerInputCommands]) {
+				if ([[plugin supportedServerInputCommands] containsObject:lowercaseCommand] == NO) {
+					continue;
+				}
+
+				if ([[plugin primaryClass] respondsToSelector:@selector(didReceiveServerInput:onClient:)]) {
+					[[plugin primaryClass] didReceiveServerInput:messageObject onClient:client];
+				} else if ([[plugin primaryClass] respondsToSelector:@selector(didReceiveServerInputOnClient:senderInformation:messageInformation:)]) {
+
+TEXTUAL_IGNORE_DEPRECATION_BEGIN
+					if (senderData == nil) {
+						senderData = @{
+						   THOPluginProtocolDidReceiveServerInputSenderIsServerAttribute	: @([messageObject senderIsServer]),
+						   THOPluginProtocolDidReceiveServerInputSenderHostmaskAttribute	: NSDictionaryNilValue([messageObject senderHostmask]),
+						   THOPluginProtocolDidReceiveServerInputSenderNicknameAttribute	: NSDictionaryNilValue([messageObject senderNickname]),
+						   THOPluginProtocolDidReceiveServerInputSenderUsernameAttribute	: NSDictionaryNilValue([messageObject senderUsername]),
+						   THOPluginProtocolDidReceiveServerInputSenderAddressAttribute		: NSDictionaryNilValue([messageObject senderAddress])
+						};
 					}
+
+					if (messageData == nil) {
+						messageData = @{
+							 THOPluginProtocolDidReceiveServerInputMessageReceivedAtTimeAttribute   : NSDictionaryNilValue([messageObject receivedAt]),
+							 THOPluginProtocolDidReceiveServerInputMessageParamatersAttribute		: NSDictionaryNilValue([messageObject messageParamaters]),
+							 THOPluginProtocolDidReceiveServerInputMessageSequenceAttribute			: NSDictionaryNilValue([messageObject messageSequence]),
+							 THOPluginProtocolDidReceiveServerInputMessageNumericReplyAttribute		: @([messageObject messageCommandNumeric]),
+							 THOPluginProtocolDidReceiveServerInputMessageCommandAttribute			:   [messageObject messageCommand],
+							 THOPluginProtocolDidReceiveServerInputMessageNetworkAddressAttribute	: NSDictionaryNilValue([client networkAddress]),
+							 THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribute		: NSDictionaryNilValue([client networkName])
+						 };
+					}
+
+					[[plugin primaryClass] didReceiveServerInputOnClient:client senderInformation:senderData messageInformation:messageData];
+TEXTUAL_IGNORE_DEPRECATION_END
+
 				}
 			}
 		}
@@ -502,7 +583,7 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
     for (THOPluginItem *plugin in self.allLoadedPlugins)
 	{
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureInlineMediaManipulationFlag]) {
+		if ([plugin supportsFeature:THOPluginItemSupportsInlineMediaManipulation]) {
             NSString *input = [[plugin primaryClass] processInlineMediaContentURL:resourceCopy];
 
 			if (input) {
@@ -523,12 +604,16 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (id)processInterceptedUserInput:(id)input command:(NSString *)command
 {
+	if (input == nil || command == nil) {
+		return nil;
+	}
+
 	id inputCopy = input;
 	id commandCopy = command;
 
     for (THOPluginItem *plugin in self.allLoadedPlugins)
 	{
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureUserInputDataInterceptionFlag]) {
+		if ([plugin supportsFeature:THOPluginItemSupportsUserInputDataInterception]) {
 			inputCopy = [[plugin primaryClass] interceptUserInput:inputCopy command:commandCopy];
 
 			if (inputCopy == nil) {
@@ -542,11 +627,15 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (IRCMessage *)processInterceptedServerInput:(IRCMessage *)input for:(IRCClient *)client
 {
+	if (input == nil || client == nil) {
+		return nil;
+	}
+
 	IRCMessage *inputCopy = input;
 
     for (THOPluginItem *plugin in self.allLoadedPlugins)
 	{
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureServerInputDataInterceptionFlag]) {
+		if ([plugin supportsFeature:THOPluginItemSupportsServerInputDataInterception]) {
 			inputCopy = [[plugin primaryClass] interceptServerInput:inputCopy for:client];
 
 			if (inputCopy == nil) {
@@ -558,13 +647,45 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
     return inputCopy;
 }
 
-- (void)postNewMessageEventForViewController:(TVCLogController *)logController messageInfo:(NSDictionary *)messageInfo isThemeReload:(BOOL)isThemeReload isHistoryReload:(BOOL)isHistoryReload
+- (void)postNewMessageEventForViewController:(TVCLogController *)viewController withObject:(THOPluginDidPostNewMessageConcreteObject *)messageObject
 {
+	if (viewController == nil || messageObject == nil) {
+		return;
+	}
+
 	XRPerformBlockAsynchronouslyOnQueue(self.dispatchQueue, ^{
 		for (THOPluginItem *plugin in self.allLoadedPlugins)
 		{
-			if ([plugin supportsFeature:THOPluginItemSupportedFeatureNewMessagePostedEventFlag]) {
-				[[plugin primaryClass] didPostNewMessageForViewController:logController messageInfo:messageInfo isThemeReload:isThemeReload isHistoryReload:isHistoryReload];
+			if ([plugin supportsFeature:THOPluginItemSupportsNewMessagePostedEvent]) {
+				if ([[plugin primaryClass] respondsToSelector:@selector(didPostNewMessage:forViewController:)]) {
+					[[plugin primaryClass] didPostNewMessage:messageObject forViewController:viewController];
+				} else if ([[plugin primaryClass] respondsToSelector:@selector(didPostNewMessageForViewController:messageInfo:isThemeReload:isHistoryReload:)]) {
+					NSMutableDictionary *pluginDictionary  = [[NSMutableDictionary alloc] initWithCapacity:9];
+
+TEXTUAL_IGNORE_DEPRECATION_BEGIN
+					[pluginDictionary setBool:[messageObject keywordMatchFound] forKey:THOPluginProtocolDidPostNewMessageKeywordMatchFoundAttribute];
+
+					[pluginDictionary setInteger:[messageObject lineType] forKey:THOPluginProtocolDidPostNewMessageLineTypeAttribute];
+					[pluginDictionary setInteger:[messageObject memberType] forKey:THOPluginProtocolDidPostNewMessageMemberTypeAttribute];
+
+					[pluginDictionary maybeSetObject:[messageObject senderNickname] forKey:THOPluginProtocolDidPostNewMessageSenderNicknameAttribute];
+
+					[pluginDictionary maybeSetObject:[messageObject receivedAt] forKey:THOPluginProtocolDidPostNewMessageReceivedAtTimeAttribute];
+
+					[pluginDictionary maybeSetObject:[messageObject lineNumber] forKey:THOPluginProtocolDidPostNewMessageLineNumberAttribute];
+
+					[pluginDictionary maybeSetObject:[messageObject listOfHyperlinks] forKey:THOPluginProtocolDidPostNewMessageListOfHyperlinksAttribute];
+					[pluginDictionary maybeSetObject:[messageObject listOfUsers] forKey:THOPluginProtocolDidPostNewMessageListOfUsersAttribute];
+
+					[pluginDictionary maybeSetObject:[messageObject messageContents] forKey:THOPluginProtocolDidPostNewMessageMessageBodyAttribute];
+
+					[[plugin primaryClass] didPostNewMessageForViewController:viewController
+																  messageInfo:[pluginDictionary copy]
+																isThemeReload:[messageObject isProcessedInBulk]
+															  isHistoryReload:[messageObject isProcessedInBulk]];
+TEXTUAL_IGNORE_DEPRECATION_END
+
+				}
 			}
 		}
 	});
@@ -572,13 +693,17 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 
 - (NSString *)postWillRenderMessageEvent:(NSString *)newMessage forViewController:(TVCLogController *)viewController lineType:(TVCLogLineType)lineType memberType:(TVCLogLineMemberType)memberType
 {
+	if (newMessage == nil || viewController == nil) {
+		return nil;
+	}
+
 	BOOL valueChanged = NO;
 
 	NSString *newMessageCopy = newMessage;
 	
 	for (THOPluginItem *plugin in self.allLoadedPlugins)
 	{
-		if ([plugin supportsFeature:THOPluginItemSupportedFeatureWillRenderMessageEventFlag]) {
+		if ([plugin supportsFeature:THOPluginItemSupportsWillRenderMessageEvent]) {
 			NSString *pluginResult = [[plugin primaryClass] willRenderMessage:newMessageCopy forViewController:viewController lineType:lineType memberType:memberType];
 
 			if (NSObjectIsEmpty(pluginResult)) {
@@ -600,4 +725,37 @@ NSString * const THOPluginProtocolDidReceiveServerInputMessageNetworkNameAttribu
 	}
 }
 
+- (BOOL)postReceivedPlainTextMessageEvent:(NSString *)text authoredBy:(IRCPrefix *)textAuthor destinedFor:(IRCChannel *)textDestination asLineType:(TVCLogLineType)lineType onClient:(IRCClient *)client receivedAt:(NSDate *)receivedAt wasEncrypted:(BOOL)wasEncrypted
+{
+	if (text == nil || textAuthor == nil || client == nil || receivedAt == nil) {
+		return NO;
+	}
+
+	IRCPrefix *textAuthorCopy = [textAuthor copy];
+
+	NSDate *receivedAtCopy = [receivedAt copy];
+
+	for (THOPluginItem *plugin in self.allLoadedPlugins)
+	{
+		if ([plugin supportsFeature:THOPluginItemSupportsDidReceivePlainTextMessageEvent]) {
+			BOOL pluginResult = [[plugin primaryClass] receivedText:text authoredBy:textAuthorCopy destinedFor:textDestination asLineType:lineType onClient:client receivedAt:receivedAtCopy wasEncrypted:wasEncrypted];
+
+			if (pluginResult == NO) {
+				return NO;
+			}
+		}
+	}
+
+	return YES;
+}
+
+@end
+
+@implementation THOPluginDidPostNewMessageConcreteObject
+@end
+
+@implementation THOPluginDidReceiveServerInputConcreteObject
+@end
+
+@implementation THOPluginOutputSuppressionRule
 @end

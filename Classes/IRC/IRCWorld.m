@@ -1,4 +1,4 @@
-/* ********************************************************************* 
+/* *********************************************************************
                   _____         _               _
                  |_   _|____  _| |_ _   _  __ _| |
                    | |/ _ \ \/ / __| | | |/ _` | |
@@ -46,6 +46,14 @@
 NSString * const IRCWorldControllerDefaultsStorageKey = @"World Controller";
 NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 
+NSString * const IRCWorldDateHasChangedNotification = @"IRCWorldDateHasChangedNotification";
+
+NSString * const IRCWorldClientListWasModifiedNotification = @"IRCWorldClientListWasModifiedNotification";
+
+@interface IRCWorld ()
+@property (nonatomic, assign) BOOL preferencesDidChangeTimerIsActive;
+@end
+
 @implementation IRCWorld
 
 #pragma mark -
@@ -56,10 +64,17 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 	if ((self = [super init])) {
 		self.clients = [NSMutableArray new];
 		
-		self.textSizeMultiplier = 1.0;
+		self.textSizeMultiplier = 1.0f;
+
+		self.preferencesDidChangeTimerIsActive = NO;
 	}
 	
 	return self;
+}
+
+- (void)dealloc
+{
+	[NSObject cancelPreviousPerformRequestsWithTarget:self];
 }
 
 #pragma mark -
@@ -84,6 +99,10 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 
 - (void)setupOtherServices
 {
+	[self setupMidnightTimer];
+
+	[RZNotificationCenter() addObserver:self selector:@selector(dateChanged:) name:NSSystemClockDidChangeNotification object:nil];
+
 	[RZNotificationCenter() addObserver:self selector:@selector(userDefaultsDidChange:) name:TPCPreferencesUserDefaultsDidChangeNotification object:nil];
 }
 
@@ -122,14 +141,22 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 
 - (void)userDefaultsDidChange:(NSNotification *)notification
 {
-	[self performBlockOnMainThread:^{
-		[self executeScriptCommandOnAllViews:@"preferencesDidChange" arguments:@[] onQueue:YES];
-	}];
+	if ([themeSettings() postPreferencesDidChangesNotification] == NO) {
+		return; // Cancel operation...
+	}
+
+	if (self.preferencesDidChangeTimerIsActive == NO) {
+		self.preferencesDidChangeTimerIsActive = YES;
+
+		[self performSelector:@selector(informaAllViewsUserDefaultsDidChange) withObject:nil afterDelay:1.0];
+	}
 }
 
-- (void)informViewsThatTheSidebarInversionPreferenceDidChange
+- (void)informaAllViewsUserDefaultsDidChange
 {
-	[self executeScriptCommandOnAllViews:@"sidebarInversionPreferenceChanged" arguments:@[] onQueue:NO];
+	self.preferencesDidChangeTimerIsActive = NO;
+
+	[self executeScriptCommandOnAllViews:@"preferencesDidChange" arguments:@[] onQueue:YES];
 }
 
 #pragma mark -
@@ -155,6 +182,8 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 			[self.clients removeAllObjects];
 			
 			[self.clients addObjectsFromArray:clientList];
+
+			[self postClientListWasModifiedNotification];
 		}
 	});
 }
@@ -174,6 +203,11 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 
 #pragma mark -
 #pragma mark Utilities
+
+- (void)postClientListWasModifiedNotification
+{
+	[RZNotificationCenter() postNotificationName:IRCWorldClientListWasModifiedNotification object:self];
+}
 
 - (void)autoConnectAfterWakeup:(BOOL)afterWakeUp
 {
@@ -338,6 +372,69 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 
 		[TVCDockIcon updateDockIcon];
 	}
+
+	[TVCImageURLoader invalidateInternalCache];
+}
+
+- (void)setupMidnightTimer
+{
+	[self setupMidnightTimerWithNotification:NO];
+}
+
+- (void)setupMidnightTimerWithNotification:(BOOL)fireNotification
+{
+	/* Ask for the day, month, and year from the current calender. */
+	/* We are not asking for time which means that it will default to zero. */
+	NSDateComponents *currentDayComponents = [RZCurrentCalender() components:(NSYearCalendarUnit | NSMonthCalendarUnit | NSDayCalendarUnit) fromDate:[NSDate date]];
+
+	NSDate *lastMidnight = [RZCurrentCalender() dateFromComponents:currentDayComponents];
+
+	/* Create date components one day in the future. */
+	/* All other values default to zero. */
+	NSDateComponents *futureDayComponents = [NSDateComponents new];
+
+	[futureDayComponents setDay:1];
+
+	/* With the current date and future components, calculate
+	 the date on which our midnight timer will land. */
+	NSDate *nextMidnight = [RZCurrentCalender() dateByAddingComponents:futureDayComponents toDate:lastMidnight options:0];
+
+	/* Create timer for midnight in future. */
+	/* We set the tolerance for the timer to absolute zero so that
+	 we are confident that OS X will not reschedule it. */
+	NSTimer *midnightTimer = [[NSTimer alloc]
+							  initWithFireDate:nextMidnight
+							  interval:0.0
+							  target:self
+							  selector:@selector(dateChanged:)
+							  userInfo:nil
+							  repeats:NO];
+
+	if ([XRSystemInformation isUsingOSXMavericksOrLater]) {
+		[midnightTimer setTolerance:0.0];
+	}
+
+	/* Schedule the timer on the run loop which will retain reference. */
+	[RZCurrentRunLoop() addTimer:midnightTimer forMode:NSDefaultRunLoopMode];
+
+	/* Post notification if needed. */
+	if (fireNotification) {
+		[RZNotificationCenter() postNotificationName:IRCWorldDateHasChangedNotification object:nil userInfo:nil];
+
+		[self executeScriptCommandOnAllViews:@"dateChanged"
+								   arguments:@[@([currentDayComponents year]),
+											   @([currentDayComponents month]),
+											   @([currentDayComponents day])]
+									 onQueue:NO];
+	}
+}
+
+- (void)dateChanged:(id)sender
+{
+	/* We call the notifications in the timer so we do not have to ask for the
+	 current day components two times. */
+
+	[self setupMidnightTimerWithNotification:YES];
 }
 
 #pragma mark -
@@ -463,7 +560,7 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 	} else {
 		newMultiplier /= ZoomMultiplierRatio;
 		
-		if (self.textSizeMultiplier < MinimumZoomMultiplier) {
+		if (newMultiplier < MinimumZoomMultiplier) {
 			return; // Do not perform an action.
 		} else {
 			self.textSizeMultiplier = newMultiplier;
@@ -567,10 +664,12 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 		}
 	}
 
-	[mainWindow() reloadLoadingScreen];
+	(void)[mainWindow() reloadLoadingScreen];
 
 	[menuController() populateNavgiationChannelList];
-	
+
+	[self postClientListWasModifiedNotification];
+
 	return c;
 }
 
@@ -584,13 +683,7 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 		NSAssert(NO, @"nil associated client.");
 	}
 
-	IRCChannel *c = [client findChannel:[seed channelName]];
-
-	if (c) {
-		return c;
-	}
-
-	c = [IRCChannel new];
+	IRCChannel *c = [IRCChannel new];
 
 	[c setAssociatedClient:client];
 
@@ -684,6 +777,8 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 		
 		if ([target isClient]) {
 			[self.clients removeObjectIdenticalTo:target];
+
+			[self postClientListWasModifiedNotification];
 		} else {
 			IRCClient *u = [target associatedClient];
 			
@@ -724,7 +819,7 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 		[u prepareForPermanentDestruction];
 	}
 	
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 	if (skipCloud == NO) {
 		[self destroyClientInCloud:u];
 	}
@@ -738,13 +833,15 @@ NSString * const IRCWorldControllerClientListDefaultsStorageKey = @"clients";
 		@synchronized(self.clients) {
 			[self.clients removeObjectIdenticalTo:u];
 		}
+
+		[self postClientListWasModifiedNotification];
 		
 		[mainWindowServerList() removeItemFromList:u];
 
 		[mainWindow() adjustSelection];
 	}
 
-	[mainWindow() reloadLoadingScreen];
+	(void)[mainWindow() reloadLoadingScreen];
 
 	[menuController() populateNavgiationChannelList];
 }

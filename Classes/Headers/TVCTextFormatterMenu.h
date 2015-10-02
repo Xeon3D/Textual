@@ -39,34 +39,33 @@
 
 #define TVCTextViewIRCFormattingMenuFormatterMenuTag			53037
 
-/* There is only one instance of TVCTextViewIRCFormattingMenu per-window.
- When enabled inside a sheet, the right click menu is available but the
- keyboard shortcuts are reserved for main window access. */
 @interface TVCTextViewIRCFormattingMenu : NSObject <NSMenuDelegate>
 @property (nonatomic, weak) IBOutlet NSMenuItem *formatterMenu;
 @property (nonatomic, weak) IBOutlet NSMenu *foregroundColorMenu;
 @property (nonatomic, weak) IBOutlet NSMenu *backgroundColorMenu;
-@property (nonatomic, assign) BOOL sheetOverrideEnabled;
-@property (nonatomic, strong) dispatch_queue_t formattingQueue;
-@property (nonatomic, unsafe_unretained) TVCTextViewWithIRCFormatter *textField;
 
 - (void)enableSheetField:(TVCTextViewWithIRCFormatter *)field;
 - (void)enableWindowField:(TVCTextViewWithIRCFormatter *)field;
 
-@property (readonly) BOOL boldSet;
-@property (readonly) BOOL italicSet;
-@property (readonly) BOOL underlineSet;
-@property (readonly) BOOL foregroundColorSet;
-@property (readonly) BOOL backgroundColorSet;
+@property (readonly) BOOL firstResponderSupportsFormatting;
+
+@property (readonly) BOOL textIsBold;
+@property (readonly) BOOL textIsItalicized;
+@property (readonly) BOOL textIsStruckthrough;
+@property (readonly) BOOL textIsUnderlined;
+@property (readonly) BOOL textHasForegroundColor;
+@property (readonly) BOOL textHasBackgroundColor;
 
 - (IBAction)insertBoldCharIntoTextBox:(id)sender;
 - (IBAction)insertItalicCharIntoTextBox:(id)sender;
+- (IBAction)insertStrikethroughCharIntoTextBox:(id)sender;
 - (IBAction)insertUnderlineCharIntoTextBox:(id)sender;
 - (IBAction)insertForegroundColorCharIntoTextBox:(id)sender;
 - (IBAction)insertBackgroundColorCharIntoTextBox:(id)sender;
 
 - (IBAction)removeBoldCharFromTextBox:(id)sender;
 - (IBAction)removeItalicCharFromTextBox:(id)sender;
+- (IBAction)removeStrikethroughCharFromTextBox:(id)sender;
 - (IBAction)removeUnderlineCharFromTextBox:(id)sender;
 - (IBAction)removeForegroundColorCharFromTextBox:(id)sender;
 - (IBAction)removeBackgroundColorCharFromTextBox:(id)sender;

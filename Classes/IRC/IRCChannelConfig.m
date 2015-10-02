@@ -187,7 +187,7 @@
 	[dic assignBoolTo:&_ignoreGeneralEventMessages	forKey:@"ignoreJPQActivity"];
 
 	/* Load the newest set of keys. */
-	[dic assignIntegerTo:&_type			forKey:@"channelType"];
+	[dic assignUnsignedIntegerTo:&_type			forKey:@"channelType"];
 
 	[dic assignStringTo:&_itemUUID		forKey:@"uniqueIdentifier"];
 	[dic assignStringTo:&_channelName	forKey:@"channelName"];
@@ -218,21 +218,6 @@
 			NSObjectsAreEqual(_secretKey, [seed temporarySecretKey]));
 }
 
-- (NSDictionary *)dictionaryValueByStrippingDefaults:(NSMutableDictionary *)dic
-{
-	NSMutableDictionary *ndic = [NSMutableDictionary dictionary];
-
-	NSDictionary *defaults = [self defaults];
-
-	[dic enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
-		if (NSObjectsAreEqual(defaults[key], obj) == NO) {
-			[ndic setObject:obj forKey:key];
-		}
-	}];
-
-	return [ndic copy];
-}
-
 - (NSDictionary *)dictionaryValue
 {
 	NSMutableDictionary *dic = [NSMutableDictionary dictionary];
@@ -254,8 +239,8 @@
 		[dic maybeSetObject:self.defaultModes				forKey:@"defaultMode"];
 		[dic maybeSetObject:self.defaultTopic				forKey:@"defaultTopic"];
 	}
-	
-	return [self dictionaryValueByStrippingDefaults:dic];
+
+	return [dic dictionaryByRemovingDefaults:[self defaults]];
 }
 
 - (id)copyWithZone:(NSZone *)zone

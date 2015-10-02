@@ -116,17 +116,16 @@
 						   completionBlock:nil];
 }
 
-- (void)didReceiveServerInputOnClient:(IRCClient *)client
-					senderInformation:(NSDictionary *)senderDict
-				   messageInformation:(NSDictionary *)messageDict
+- (void)didReceiveServerInput:(THOPluginDidReceiveServerInputConcreteObject *)inputObject onClient:(IRCClient *)client
 {
 	if ([self isPluginEnabled] == NO) {
 		return; // Cancel operation...
 	}
 
 	[self performBlockOnMainThread:^{
-		NSString *person  = senderDict[THOPluginProtocolDidReceiveServerInputSenderNicknameAttribute];
-		NSString *message = messageDict[THOPluginProtocolDidReceiveServerInputMessageSequenceAttribute];
+		NSString *person = [inputObject senderNickname];
+
+		NSString *message = [inputObject messageSequence];
 
 		if ([message hasPrefix:@"+"]) {
 			message = [message substringFromIndex:1];
@@ -280,17 +279,28 @@
 	return @[@"notice"];
 }
 
-- (NSDictionary *)pluginOutputDisplayRules
+- (NSArray *)pluginOutputSuppressionRules
 {
-	NSString *ruleKey = IRCCommandFromLineType(TVCLogLineNoticeType);
+    /* Rule 1 */
+    THOPluginOutputSuppressionRule *noticeRule1 = [THOPluginOutputSuppressionRule new];
+    
+    [noticeRule1 setRestrictConsole:YES];
+    [noticeRule1 setRestrictChannel:YES];
+    [noticeRule1 setRestrictPrivateMessage:YES];
 
-	NSArray *rule_1 = @[[@"^" stringByAppendingString:TXExchangeRequestPrefix],
-	NSNumberWithBOOL(YES), NSNumberWithBOOL(YES), NSNumberWithBOOL(YES)];
-
-	NSArray *rule_2 = @[[@"^" stringByAppendingString:TXExchangeResponsePrefix],
-	NSNumberWithBOOL(YES), NSNumberWithBOOL(YES), NSNumberWithBOOL(YES)];
-
-	return @{ruleKey : @[rule_1, rule_2]};
+    [noticeRule1 setMatch:[@"^" stringByAppendingString:TXExchangeRequestPrefix]];
+    
+    /* Rule 2 */
+    THOPluginOutputSuppressionRule *noticeRule2 = [THOPluginOutputSuppressionRule new];
+    
+    [noticeRule2 setRestrictConsole:YES];
+    [noticeRule2 setRestrictChannel:YES];
+    [noticeRule2 setRestrictPrivateMessage:YES];
+    
+    [noticeRule2 setMatch:[@"^" stringByAppendingString:TXExchangeResponsePrefix]];
+    
+    
+    return @[noticeRule1, noticeRule2];
 }
 
 #pragma mark -

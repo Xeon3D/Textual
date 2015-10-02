@@ -87,6 +87,38 @@
 	} else {
 		[self updateDrawingForMavericks:interfaceObject];
 	}
+
+	[self populateAccessibilityDescriptions];
+}
+
+- (void)populateAccessibilityDescriptions
+{
+	IRCTreeItem *cellItem = [self cellItem];
+
+	NSDictionary *drawingContext = [self drawingContext];
+
+	BOOL isActive = [drawingContext boolForKey:@"isActive"];
+	BOOL isGroupItem = [drawingContext boolForKey:@"isGroupItem"];
+
+	if (isGroupItem) {
+		if (isActive) {
+			[XRAccessibility setAccessibilityValueDescription:TXTLS(@"BasicLanguage[1278][1]", [cellItem label]) forObject:[[self textField] cell]];
+		} else {
+			[XRAccessibility setAccessibilityValueDescription:TXTLS(@"BasicLanguage[1278][2]", [cellItem label]) forObject:[[self textField] cell]];
+		}
+	} else {
+		if ([cellItem isPrivateMessage]) {
+			[XRAccessibility setAccessibilityValueDescription:TXTLS(@"BasicLanguage[1280]", [cellItem label]) forObject:[[self textField] cell]];
+		} else {
+			if (isActive) {
+				[XRAccessibility setAccessibilityValueDescription:TXTLS(@"BasicLanguage[1279][1]", [cellItem label]) forObject:[[self textField] cell]];
+			} else {
+				[XRAccessibility setAccessibilityValueDescription:TXTLS(@"BasicLanguage[1279][2]", [cellItem label]) forObject:[[self textField] cell]];
+			}
+		}
+	}
+
+	[XRAccessibility setAccessibilityLabel:nil forObject:[[self imageView] cell]];
 }
 
 - (void)updateTextFieldValue
@@ -579,7 +611,7 @@
 	
 	NSDictionary *attributes = @{NSForegroundColorAttributeName : textColor, NSFontAttributeName : textFont};
 	
-	NSAttributedString *mcstring = [NSAttributedString stringWithBase:messageCountString attributes:attributes];
+	NSAttributedString *mcstring = [NSAttributedString attributedStringWithString:messageCountString attributes:attributes];
 	
 	return mcstring;
 }

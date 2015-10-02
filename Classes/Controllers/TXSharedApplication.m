@@ -59,8 +59,9 @@ _defineSharedInstance(sharedNicknameCompletionStatus, TLONicknameCompletionStatu
 _defineSharedInstance(sharedQueuedCertificateTrustPanel, TVCQueuedCertificateTrustPanel)
 _defineSharedInstance(sharedSpeechSynthesizer, TLOSpeechSynthesizer)
 _defineSharedInstance(sharedThemeController, TPCThemeController)
+_defineSharedInstance(sharedWindowController, TXWindowController)
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 _defineSharedInstance(sharedEncryptionManager, TLOEncryptionManager)
 #endif
 
@@ -74,11 +75,11 @@ _defineSharedInstance(sharedEncryptionManager, TLOEncryptionManager)
 		sharedSelf = [OELReachability reachabilityForInternetConnection];
 		
 		[sharedSelf setReachableBlock:^(OELReachability *reachability) {
-			[[NSObject worldController] reachabilityChanged:YES];
+			[worldController() reachabilityChanged:YES];
 		}];
 		
 		[sharedSelf setUnreachableBlock:^(OELReachability *reachability) {
-			[[NSObject worldController] reachabilityChanged:NO];
+			[worldController() reachabilityChanged:NO];
 		}];
 	});
 	
@@ -114,7 +115,7 @@ _defineSharedInstance(sharedEncryptionManager, TLOEncryptionManager)
 	return [TXSharedApplication sharedMutableSynchronizationSerialQueue:NO];
 }
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 + (TPCPreferencesCloudSync *)sharedCloudSyncManager
 {
 	static id sharedSelf = nil;

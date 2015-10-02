@@ -44,7 +44,7 @@
 #define _WebMenuItemTagInspectElementLion			2024
 #define _WebMenuItemTagInspectElementMountainLion	2025
 
-#define _WebMenuItemTagIRCopServices	42354
+#define _WebMenuItemTagSearchInGoogle		1601 // Tag for Textual's menu, not WebKit
 
 @implementation TVCLogPolicy
 
@@ -94,14 +94,10 @@
 
 - (NSArray *)webView:(WebView *)sender contextMenuItemsForElement:(NSDictionary *)element defaultMenuItems:(NSArray *)defaultMenuItems
 {
-	TVCMainWindowNegateActionWithAttachedSheetR(@[]);
-	
 	NSMutableArray *ary = [NSMutableArray array];
 
 	/* Invalidate passed information if we are in console. */
-	TVCLogController *controller = [mainWindow() selectedViewController];
-	
-	if ([controller associatedChannel] == nil) {
+	if ([self.logController associatedChannel] == nil) {
 		self.nickname = nil;
 	}
 	
@@ -123,15 +119,9 @@
 	}
 	else if (self.nickname)
 	{
-		BOOL isIRCop = [[mainWindow() selectedClient] hasIRCopAccess];
-
 		NSMenu *memberMenu = [menuController() userControlMenu];
 		
 		for (NSMenuItem *item in [memberMenu itemArray]) {
-			if ([item tag] == _WebMenuItemTagIRCopServices && isIRCop == NO) {
-				continue;
-			}
-			
 			NSMenuItem *newitem = [item copy];
 			
 			[newitem setUserInfo:self.nickname recursively:YES];
@@ -177,14 +167,12 @@
 		}
 		
 		for (NSMenuItem *item in [menu itemArray]) {
-			if ([item tag] == _WebMenuItemTagInspectElementLion ||
-				[item tag] == _WebMenuItemTagInspectElementMountainLion)
-			{
+			[ary addObject:[item copy]];
+
+			if ([item tag] == _WebMenuItemTagSearchInGoogle) {
 				if (lookupInDictionaryItem) {
-					[ary addObject:[lookupInDictionaryItem copy]];
+					[ary addObject:lookupInDictionaryItem];
 				}
-			} else {
-				[ary addObject:[item copy]];
 			}
 		}
 		
@@ -214,8 +202,6 @@
 		[listener ignore];
 
 		[TLOpenLink open:actionInformation[WebActionOriginalURLKey]];
-	} else if (action == WebNavigationTypeOther) {
-		[listener use];
 	} else {
 		[listener use];
 	}
@@ -223,9 +209,9 @@
 
 - (NSUInteger)webView:(WebView *)webView dragDestinationActionMaskForDraggingInfo:(id<NSDraggingInfo>)draggingInfo
 {
-	IRCChannel *channel = [mainWindow() selectedChannel];
+	IRCChannel *channel = [self.logController associatedChannel];
 	
-	if ([channel isPrivateMessage]) {
+	if (channel && [channel isPrivateMessage]) {
 		NSPasteboard *pboard = [draggingInfo draggingPasteboard];
 
 		if ([[pboard types] containsObject:NSFilenamesPboardType]) {

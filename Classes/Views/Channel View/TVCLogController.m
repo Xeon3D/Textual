@@ -38,6 +38,8 @@
 
 #import "TextualApplication.h"
 
+#import "THOPluginProtocolPrivate.h"
+
 #import <objc/objc-runtime.h>
 
 @interface TVCLogController ()
@@ -52,6 +54,8 @@
 @property (nonatomic, assign) NSInteger activeLineCount;
 @property (strong) NSMutableArray *highlightedLineNumbers;
 @end
+
+NSString * const TVCLogControllerViewFinishedLoadingNotification = @"TVCLogControllerViewFinishedLoadingNotification";
 
 @implementation TVCLogController
 
@@ -142,6 +146,7 @@
 	 self.webView = [[TVCLogView alloc] initWithFrame:NSZeroRect];
 	
 	 self.webViewPolicy = [TVCLogPolicy new];
+	[self.webViewPolicy setLogController:self];
 	
 	[self.webView setPreferences:_preferencesInitd];
 	
@@ -164,7 +169,7 @@
 	[self loadAlternateHTML:[self initialDocument:nil]];
 
 	/* Cache last known state of encryption. */
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 	if (self.associatedChannel) {
 		self.viewIsEncrypted = [self.associatedChannel encryptionStateIsEncrypted];
 	} else {
@@ -172,7 +177,7 @@
 
 		self.viewIsEncrypted = NO;
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 	}
 #endif
 
@@ -546,7 +551,7 @@
 #pragma mark -
 #pragma mark Reload Scrollback
 
-- (void)appendHistoricMessageFragmentToBody:(NSString *)html
+- (void)appendHistoricMessageFragment:(NSString *)html toHistoricMessagesDiv:(BOOL)toHistoricMessagesDiv
 {
 	/* This method looks for #historic_messages and appends to that if it
 	 exists. If it does not exist, then it looks for #body_home. This div 
@@ -558,13 +563,17 @@
 	DOMDocument *doc = [self mainFrameDocument];
 	PointerIsEmptyAssert(doc);
 
-	DOMElement *body = [doc getElementById:@"historic_messages"];
+	DOMElement *body = nil;
+
+	if (toHistoricMessagesDiv) {
+		body = [doc getElementById:@"historic_messages"];
+	}
 
 	if (body == nil) {
 		body = [self documentBody];
-
-		PointerIsEmptyAssert(body);
 	}
+
+	PointerIsEmptyAssert(body);
 
 	DOMNodeList *childNodes = [body childNodes];
 
@@ -635,7 +644,7 @@
 
 	/* Update WebKit. */
 	[self performBlockOnMainThread:^{
-		[self appendHistoricMessageFragmentToBody:patchedAppend];
+		[self appendHistoricMessageFragment:patchedAppend toHistoricMessagesDiv:markHistoric];
 
 		[self mark];
 
@@ -650,12 +659,15 @@
 			[self executeQuickScriptCommand:@"newMessagePostedToView" withArguments:@[lineNumber]];
 			
 			/* Inform plugins. */
-			NSDictionary *resultInfo = lineInfo[1];
-			
-			[sharedPluginManager() postNewMessageEventForViewController:self
-															messageInfo:resultInfo[@"pluginDictionary"]
-														  isThemeReload:(markHistoric == NO)
-														isHistoryReload: markHistoric];
+			if ([sharedPluginManager() supportsFeature:THOPluginItemSupportsNewMessagePostedEvent]) {
+				NSDictionary *resultInfo = lineInfo[1];
+
+				THOPluginDidPostNewMessageConcreteObject *pluginConcreteObject = resultInfo[@"pluginConcreteObject"];
+
+				[pluginConcreteObject setIsProcessedInBulk:YES];
+
+				[sharedPluginManager() postNewMessageEventForViewController:self withObject:pluginConcreteObject];
+			}
 		}
 	}];
 }
@@ -1046,8 +1058,8 @@
 					@synchronized(self.highlightedLineNumbers) {
 						[self.highlightedLineNumbers addObject:lineNumber];
 					}
-					
-					[self.associatedClient addHighlightInChannel:self.associatedChannel withLogLine:logLine];
+
+					[self.associatedClient cacheHighlightInChannel:self.associatedChannel withLogLine:logLine];
 				}
 
 				/* Do the actual append to WebKit. */
@@ -1057,10 +1069,9 @@
 				[self executeQuickScriptCommand:@"newMessagePostedToView" withArguments:@[lineNumber]];
 				
 				/* Inform plugins. */
-				[sharedPluginManager() postNewMessageEventForViewController:self
-																messageInfo:resultInfo[@"pluginDictionary"]
-															  isThemeReload:NO
-															isHistoryReload:NO];
+				if ([sharedPluginManager() supportsFeature:THOPluginItemSupportsNewMessagePostedEvent]) {
+					[sharedPluginManager() postNewMessageEventForViewController:self withObject:resultInfo[@"pluginConcreteObject"]];
+				}
 
 				/* Limit lines. */
 				if (self.maximumLineCount > 0 && (self.activeLineCount - 10) > self.maximumLineCount) {
@@ -1078,7 +1089,9 @@
 				for (NSString *uniqueKey in inlineImageMatches) {
 					TVCImageURLoader *loader = [TVCImageURLoader new];
 
-					[loader assesURL:inlineImageMatches[uniqueKey] withID:uniqueKey forController:self];
+					[loader setDelegate:self];
+
+					[loader assesURL:inlineImageMatches[uniqueKey] withID:uniqueKey];
 				}
 				
 				/* Log this log line. */
@@ -1312,24 +1325,28 @@
 	attributes[@"lineRenderTime"] = lineRenderTime;
 	
 	resultData[@"lineNumber"] = newLinenNumber;
-	
-	NSMutableDictionary *pluginDictionary = [NSMutableDictionary dictionary];
-	
-	[pluginDictionary setBool:highlighted forKey:THOPluginProtocolDidPostNewMessageKeywordMatchFoundAttribute];
-	
-	[pluginDictionary setInteger:[line lineType] forKey:THOPluginProtocolDidPostNewMessageLineTypeAttribute];
-	[pluginDictionary setInteger:[line memberType] forKey:THOPluginProtocolDidPostNewMessageMemberTypeAttribute];
-	
-	[pluginDictionary maybeSetObject:[line nickname] forKey:THOPluginProtocolDidPostNewMessageSenderNicknameAttribute];
-	[pluginDictionary maybeSetObject:[line receivedAt] forKey:THOPluginProtocolDidPostNewMessageReceivedAtTimeAttribute];
-	
-	[pluginDictionary maybeSetObject:newLinenNumber forKey:THOPluginProtocolDidPostNewMessageLineTypeAttribute];
-	
-	[pluginDictionary maybeSetObject:rendererResults[TVCLogRendererResultsRangesOfAllLinksInBodyAttribute] forKey:THOPluginProtocolDidPostNewMessageListOfHyperlinksAttribute];
-	[pluginDictionary maybeSetObject:rendererResults[TVCLogRendererResultsListOfUsersFoundAttribute] forKey:THOPluginProtocolDidPostNewMessageListOfUsersAttribute];
-	[pluginDictionary maybeSetObject:rendererResults[TVCLogRendererResultsOriginalBodyWithoutEffectsAttribute] forKey:THOPluginProtocolDidPostNewMessageMessageBodyAttribute];
-	
-	resultData[@"pluginDictionary"] = pluginDictionary;
+
+	if ([sharedPluginManager() supportsFeature:THOPluginItemSupportsNewMessagePostedEvent]) {
+		THOPluginDidPostNewMessageConcreteObject *pluginConcreteObject = [THOPluginDidPostNewMessageConcreteObject new];
+
+		[pluginConcreteObject setKeywordMatchFound:highlighted];
+
+		[pluginConcreteObject setLineType:[line lineType]];
+		[pluginConcreteObject setMemberType:[line memberType]];
+
+		[pluginConcreteObject setSenderNickname:[line nickname]];
+
+		[pluginConcreteObject setReceivedAt:[line receivedAt]];
+
+		[pluginConcreteObject setLineNumber:newLinenNumber];
+
+		[pluginConcreteObject setMessageContents:rendererResults[TVCLogRendererResultsOriginalBodyWithoutEffectsAttribute]];
+
+		[pluginConcreteObject setListOfHyperlinks:rendererResults[TVCLogRendererResultsRangesOfAllLinksInBodyAttribute]];
+		[pluginConcreteObject setListOfUsers:rendererResults[TVCLogRendererResultsOriginalBodyWithoutEffectsAttribute]];
+
+		resultData[@"pluginConcreteObject"] = pluginConcreteObject;
+	}
 	
 	// ************************************************************************** /
 	// Return information.											              /
@@ -1350,11 +1367,14 @@
 	return html;
 }
 
-- (void)imageLoaderFinishedLoadingForImageWithID:(NSString *)uniqueID orientation:(NSInteger)orientationIndex
+- (void)isSafeToPresentImageWithID:(NSString *)uniqueID
 {
-	if (uniqueID) {
-		[self.webViewScriptSink toggleInlineImage:uniqueID withKeyCheck:NO orientation:orientationIndex];
-	}
+	[self.webViewScriptSink toggleInlineImage:uniqueID];
+}
+
+- (void)isNotSafeToPresentImageWithID:(NSString *)uniqueID
+{
+	;
 }
 
 #pragma mark -
@@ -1493,6 +1513,8 @@
 		viewType = [self.associatedChannel channelTypeString];
 	}
 
+	self.isLoaded = YES;
+
 	[self executeQuickScriptCommand:@"viewInitiated" withArguments:@[
 		 NSDictionaryNilValue(viewType),
 		 NSDictionaryNilValue([self.associatedClient uniqueIdentifier]),
@@ -1506,14 +1528,14 @@
 		[self executeQuickScriptCommand:@"viewFinishedReload" withArguments:@[]];
 	}
 
-	self.isLoaded = YES;
+	[RZNotificationCenter() postNotificationName:TVCLogControllerViewFinishedLoadingNotification object:self];
 
 	[self setUpScroller];
 
 	[[self printingQueue] updateReadinessState:self];
 
 	/* Change the font size to the one of others for new views. */
-	NSInteger math = [worldController() textSizeMultiplier];
+	float math = [worldController() textSizeMultiplier];
 
 	[self.webView setTextSizeMultiplier:math];
 }
@@ -1533,26 +1555,30 @@
 
 - (void)webView:(WebView *)sender didClearWindowObject:(WebScriptObject *)windowObject forFrame:(WebFrame *)frame
 {
-	self.windowScriptObjectLoaded = YES;
+	if (self.windowScriptObjectLoaded == NO) {
+		self.windowScriptObjectLoaded = YES;
 
-	[windowObject setValue:self.webViewScriptSink forKey:@"app"];
+		[windowObject setValue:self.webViewScriptSink forKey:@"app"];
 
-	/* If the view was already declared as loaded, then that means our 
-	 script object came behind our actual load. Therefore, we declare
-	 ourself loaded here since it wasn't done in other delegate method. */
-	if (self.windowFrameObjectLoaded) {
-		[self postViwLoadedJavaScript];
+		/* If the view was already declared as loaded, then that means our 
+		 script object came behind our actual load. Therefore, we declare
+		 ourself loaded here since it wasn't done in other delegate method. */
+		if (self.windowFrameObjectLoaded) {
+			[self postViwLoadedJavaScript];
+		}
 	}
 }
 
 - (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame
 {
-	self.windowFrameObjectLoaded = YES;
+	if (self.windowFrameObjectLoaded == NO) {
+		self.windowFrameObjectLoaded = YES;
 
-	/* Only post view loaded from here if we have a web script object.
-	 Otherwise, we wait until we have that before doing anything. */
-	if (self.windowScriptObjectLoaded) {
-		[self postViwLoadedJavaScript];
+		/* Only post view loaded from here if we have a web script object.
+		 Otherwise, we wait until we have that before doing anything. */
+		if (self.windowScriptObjectLoaded) {
+			[self postViwLoadedJavaScript];
+		}
 	}
 }
 

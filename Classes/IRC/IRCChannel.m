@@ -120,9 +120,7 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
 		}
 
 		if (fireChangedNotification) {
-			[RZNotificationCenter() postNotificationName:IRCChannelConfigurationWasUpdatedNotification
-												  object:self
-												userInfo:@{@"channelID" : [self uniqueIdentifier]}];
+			[RZNotificationCenter() postNotificationName:IRCChannelConfigurationWasUpdatedNotification object:self];
 		}
 	}
 }
@@ -222,7 +220,7 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
 	[self reopenLogFileIfNeeded];
 }
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 - (OTRKitMessageState)encryptionState
 {
 	if ([TPCPreferences textEncryptionIsEnabled]) {
@@ -314,7 +312,7 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
 
 - (void)deactivate
 {
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 	if ([self isPrivateMessage]) {
 		[self closeOpenEncryptionSessions];
 	}
@@ -324,8 +322,6 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
   
 	if ([self isChannel]) {
 		[self.associatedClient postEventToViewController:@"channelParted" forChannel:self];
-		
-		[[self viewController] setTopic:nil];
     }
 }
 
@@ -336,13 +332,11 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
 	[self closeLogFile];
 	
 	[self.config destroyKeychains];
-	
-	NSArray *openWindows = [menuController() windowsFromWindowList:@[@"TDChannelSheet",
-																	 @"TDCTopicSheet",
-																	 @"TDCModeSheet",
-																	 @"TDChanInviteExceptionSheet",
-																	 @"TDChanBanSheet",
-																	 @"TDChanBanExceptionSheet"]];
+
+	NSArray *openWindows = [windowController() windowsFromWindowList:@[@"TDChannelPropertiesSheet",
+																	   @"TDChannelModifyTopicSheet",
+																	   @"TDChannelModifyModesSheet",
+																	   @"TDChannelBanListSheet"]];
 	
 	for (id windowObject in openWindows) {
 		if (NSObjectsAreEqual([windowObject channelID], [self uniqueIdentifier])) {
@@ -811,12 +805,19 @@ NSString * const IRCChannelConfigurationWasUpdatedNotification = @"IRCChannelCon
 - (NSInteger)indexOfMember:(NSString *)nick options:(NSStringCompareOptions)mask inList:(NSArray *)memberList
 {
 	NSObjectIsEmptyAssertReturn(nick, NSNotFound);
-	
-	if (mask & NSCaseInsensitiveSearch) {
-		return [memberList indexOfObjectMatchingValue:nick withKeyPath:@"nickname" usingSelector:@selector(isEqualIgnoringCase:)];
-	} else {
-		return [memberList indexOfObjectMatchingValue:nick withKeyPath:@"nickname" usingSelector:@selector(isEqualToString:)];
-	}
+
+	NSInteger memberIndex =
+	[memberList indexOfObjectWithOptions:NSEnumerationConcurrent passingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop) {
+		NSString *nick2 = [(IRCUser *)obj nickname];
+
+		if (mask & NSCaseInsensitiveSearch) {
+			return [nick isEqualToString:nick2];
+		} else {
+			return [nick isEqualIgnoringCase:nick2];
+		}
+	}];
+
+	return memberIndex;
 }
 
 #pragma mark -

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>-[NSString isValidInternetAddress] Performs Extended Validation</key>
+	<true/>
 	<key>AutojoinMaximumChannelJoinCount</key>
 	<integer>2</integer>
 	<key>AutomaticallyAddScrollbackMarker</key>
@@ -70,6 +72,8 @@
 	<true/>
 	<key>Main Input Text Field -&gt; Font Size</key>
 	<integer>1</integer>
+	<key>Main Input Text Field -&gt; Focus When Changing Views</key>
+	<true/>
 	<key>MainWindowTransparencyLevel</key>
 	<real>1</real>
 	<key>NicknameHighlightMatchingType</key>
@@ -116,6 +120,8 @@
 	<true/>
 	<key>NotificationType -&gt; Successful File Transfer (Sending) -&gt; Enabled</key>
 	<true/>
+	<key>NSWindowAutosaveFrameMovesToActiveDisplay</key>
+	<false/>
 	<key>Off-the-Record Messaging -&gt; Automatically Enable Service</key>
 	<false/>
 	<key>Off-the-Record Messaging -&gt; Enable Encryption</key>

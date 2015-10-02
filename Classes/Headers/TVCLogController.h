@@ -40,7 +40,14 @@
 
 #import "TVCLogView.h" // @protocol
 
-@interface TVCLogController : NSObject <TVCLogViewDelegate>
+TEXTUAL_EXTERN NSString * const TVCLogControllerViewFinishedLoadingNotification;
+
+#ifdef TXSystemIsOSXElCapitanOrLater
+@interface TVCLogController : NSObject <TVCLogViewDelegate, TVCImageURLoaderDelegate, WebFrameLoadDelegate, WebResourceLoadDelegate>
+#else
+@interface TVCLogController : NSObject <TVCLogViewDelegate, TVCImageURLoaderDelegate>
+#endif
+
 @property (nonatomic, weak) IRCClient *associatedClient;
 @property (nonatomic, weak) IRCChannel *associatedChannel;
 @property (nonatomic, strong) TVCLogView *webView;

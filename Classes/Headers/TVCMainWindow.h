@@ -41,20 +41,17 @@
 #define TVCMainWindowDefaultFrameWidth		800
 #define TVCMainWindowDefaultFrameHeight		474
 
-#define TVCMainWindowNegateActionWithAttachedSheet()		if ([mainWindow() attachedSheet]) { return; }
-#define TVCMainWindowNegateActionWithAttachedSheetR(r)		if ([mainWindow() attachedSheet]) { return r; }
-
-typedef enum TVCServerListNavigationMovementType : NSInteger {
+typedef NS_ENUM(NSUInteger, TVCServerListNavigationMovementType) {
 	TVCServerListNavigationMovementAllType,     // Move to next item.
 	TVCServerListNavigationMovementActiveType,  // Move to next active item.
 	TVCServerListNavigationMovementUnreadType,  // Move to next unread item.
-} TVCServerListNavigationMovementType;
+};
 
-typedef enum TVCServerListNavigationSelectionType : NSInteger {
+typedef NS_ENUM(NSUInteger, TVCServerListNavigationSelectionType) {
 	TVCServerListNavigationSelectionAnyType,		// Move to next item.
 	TVCServerListNavigationSelectionChannelType,	// Move to next channel item.
 	TVCServerListNavigationSelectionServerType,		// Move to next server item.
-} TVCServerListNavigationSelectionType;
+};
 
 #import "TVCMemberList.h" // @protocol
 #import "TVCServerList.h" // @protocol
@@ -88,7 +85,7 @@ typedef enum TVCServerListNavigationSelectionType : NSInteger {
 
 - (void)setupTree;
 
-- (void)reloadLoadingScreen;
+- (BOOL)reloadLoadingScreen;
 
 - (void)updateTitle;
 - (void)updateTitleFor:(id)item;
@@ -107,6 +104,8 @@ typedef enum TVCServerListNavigationSelectionType : NSInteger {
 - (IRCChannel *)selectedChannelOn:(IRCClient *)c;
 
 - (void)maybeToggleFullscreenAfterLaunch;
+
+- (void)updateAlphaValueToReflectPreferences;
 
 @property (getter=isOccluded, readonly) BOOL occluded;
 @property (getter=isInactive, readonly) BOOL inactive;

@@ -71,10 +71,9 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 			 @"autoReconnect" : @(NO),
 			 @"autoSleepModeDisconnect" : @(YES),
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+TEXTUAL_IGNORE_DEPRECATION_BEGIN
 			 @"autojoinWaitsForNickServ" : @([TPCPreferences autojoinWaitsForNickServ]),
-#pragma clang diagnostic pop
+TEXTUAL_IGNORE_DEPRECATION_END
 
 			 @"connectionPrefersIPv6" : @(NO),
 			 @"prefersSecuredConnection" : @(NO),
@@ -167,7 +166,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 	self.connectionPrefersIPv6		= [defaults boolForKey:@"connectionPrefersIPv6"];
 	self.prefersSecuredConnection	= [defaults boolForKey:@"prefersSecuredConnection"];
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 	self.excludedFromCloudSyncing	= [defaults boolForKey:@"excludedFromCloudSyncing"];
 #endif
 
@@ -445,7 +444,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 
 	[dic assignBoolTo:&_setInvisibleModeOnConnect	forKey:@"setInvisibleOnConnect"];
 
-	[dic assignIntegerTo:&_proxyType		forKey:@"proxyServerType"];
+	[dic assignUnsignedIntegerTo:&_proxyType		forKey:@"proxyServerType"];
 	[dic assignIntegerTo:&_proxyPort		forKey:@"proxyServerPort"];
 	[dic assignStringTo:&_proxyAddress		forKey:@"proxyServerAddress"];
 	[dic assignStringTo:&_proxyUsername		forKey:@"proxyServerUsername"];
@@ -485,7 +484,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 
 	[dic assignBoolTo:&_autojoinWaitsForNickServ				forKey:@"autojoinWaitsForNickServ"];
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 	[dic assignBoolTo:&_excludedFromCloudSyncing				forKey:@"excludedFromCloudSyncing"];
 #endif
 
@@ -531,7 +530,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 	[dic assignBoolTo:&_prefersSecuredConnection	forKey:@"prefersSecuredConnection"];
 	[dic assignBoolTo:&_connectionPrefersIPv6		forKey:@"connectionPrefersIPv6"];
 
-	[dic assignIntegerTo:&_proxyType				forKey:@"proxyType"];
+	[dic assignUnsignedIntegerTo:&_proxyType				forKey:@"proxyType"];
 	[dic assignStringTo:&_proxyAddress				forKey:@"proxyAddress"];
 	[dic assignIntegerTo:&_proxyPort				forKey:@"proxyPort"];
 	[dic assignStringTo:&_proxyUsername				forKey:@"proxyUsername"];
@@ -600,21 +599,6 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 			NSObjectsAreEqual(_proxyPassword, [seed temporaryProxyPassword]));
 }
 
-- (NSDictionary *)dictionaryValueByStrippingDefaults:(NSMutableDictionary *)dic
-{
-	NSMutableDictionary *ndic = [NSMutableDictionary dictionary];
-
-	NSDictionary *defaults = [self defaults];
-
-	[dic enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
-		if (NSObjectsAreEqual(defaults[key], obj) == NO) {
-			[ndic setObject:obj forKey:key];
-		}
-	}];
-
-	return [ndic copy];
-}
-
 - (NSDictionary *)dictionaryValue
 {
 	return [self dictionaryValue:NO];
@@ -631,7 +615,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 
 	[dic setBool:self.autojoinWaitsForNickServ			forKey:@"autojoinWaitsForNickServ"];
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 	[dic setBool:self.excludedFromCloudSyncing			forKey:@"excludedFromCloudSyncing"];
 #endif
 
@@ -720,7 +704,7 @@ NSInteger const IRCConnectionDefaultProxyPort = 1080;
 		[dic maybeSetObject:ignoreAry forKey:@"ignoreList"];
 	}
 
-	return [self dictionaryValueByStrippingDefaults:dic];
+	return [dic dictionaryByRemovingDefaults:[self defaults]];
 }
 
 - (id)copyWithZone:(NSZone *)zone

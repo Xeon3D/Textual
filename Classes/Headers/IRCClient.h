@@ -36,23 +36,22 @@
 
  *********************************************************************** */
 
-typedef enum IRCClientConnectMode : NSInteger {
+typedef NS_ENUM(NSUInteger, IRCClientConnectMode) {
 	IRCClientConnectNormalMode,
 	IRCClientConnectRetryMode,
 	IRCClientConnectReconnectMode,
 	IRCClientConnectBadSSLCertificateMode,
-} IRCClientConnectMode;
+};
 
-typedef enum IRCClientDisconnectMode : NSInteger {
+typedef NS_ENUM(NSUInteger, IRCClientDisconnectMode) {
 	IRCClientDisconnectNormalMode,
-	IRCClientDisconnectTrialPeriodMode,
 	IRCClientDisconnectComputerSleepMode,
 	IRCClientDisconnectBadSSLCertificateMode,
 	IRCClientDisconnectReachabilityChangeMode,
 	IRCClientDisconnectServerRedirectMode,
-} IRCClientDisconnectMode;
+};
 
-enum {
+typedef NS_OPTIONS(NSUInteger, ClientIRCv3SupportedCapacities) {
 	ClientIRCv3SupportedCapacityAwayNotify				= 1 << 0, // YES if away-notify CAP supported.
 	ClientIRCv3SupportedCapacityIdentifyCTCP			= 1 << 1, // YES if identify-ctcp CAP supported.
 	ClientIRCv3SupportedCapacityIdentifyMsg				= 1 << 2, // YES if identify-msg CAP supported.
@@ -63,13 +62,14 @@ enum {
 	ClientIRCv3SupportedCapacityIsInSASLNegotiation		= 1 << 7, // YES if in SASL CAP authentication request, else NO.
 	ClientIRCv3SupportedCapacityIsIdentifiedWithSASL	= 1 << 8, // YES if SASL authentication was successful, else NO.
 	ClientIRCv3SupportedCapacityZNCSelfMessage			= 1 << 14, // YES if the ZNC vendor specific CAP supported.
-	ClientIRCv3SupportedCapacityZNCPlaybackModule		= 1 << 15, // YES if the ZNC vendor specific CAP supported.
+	ClientIRCv3SupportedCapacityZNCPlaybackModule		= 1 << 15,  // YES if the ZNC vendor specific CAP supported.
+	ClientIRCv3SupportedCapacityBatch					= 1 << 16  // YES if batch CAP supported.
 };
-typedef NSInteger ClientIRCv3SupportedCapacities;
 
 typedef void (^IRCClientPrintToWebViewCallbackBlock)(BOOL isHighlight);
 
 TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
+TEXTUAL_EXTERN NSString * const IRCClientChannelListWasModifiedNotification;
 
 #import "IRCTreeItem.h" // superclass
 
@@ -78,11 +78,11 @@ TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
 
 #import "IRCConnection.h" // @protocol
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 #import "TLOEncryptionManager.h" // typdef enum
 #endif
 
-@interface IRCClient : IRCTreeItem <IRCConnectionDelegate, TDChanBanExceptionSheetDelegate, TDChanBanSheetDelegate, TDChanInviteExceptionSheetDelegate, TDCListDialogDelegate>
+@interface IRCClient : IRCTreeItem <IRCConnectionDelegate, TDChannelBanListSheetDelegate, TDCServerChannelListDialogDelegate>
 @property (nonatomic, copy) IRCClientConfig *config;
 @property (nonatomic, strong) IRCISupportInfo *supportInfo;
 @property (nonatomic, assign) IRCClientConnectMode connectType;
@@ -180,9 +180,8 @@ TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
 
 - (void)selectFirstChannelInChannelList;
 
-- (void)addHighlightInChannel:(IRCChannel *)channel withLogLine:(TVCLogLine *)logLine;
-
-@property (readonly) NSTimeInterval lastMessageServerTimeWithCachedValue;
+- (void)cacheHighlightInChannel:(IRCChannel *)channel withLogLine:(TVCLogLine *)logLine;
+- (void)clearCachedHighlights;
 
 - (BOOL)nicknameIsPrivateZNCUser:(NSString *)nickname;
 - (NSString *)nicknameWithZNCUserPrefix:(NSString *)nickname;
@@ -202,7 +201,7 @@ TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
 
 - (void)sendFile:(NSString *)nickname port:(NSInteger)port filename:(NSString *)filename filesize:(TXUnsignedLongLong)totalFilesize token:(NSString *)transferToken;
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 - (BOOL)encryptionAllowedForNickname:(NSString *)nickname;
 
 - (void)encryptMessage:(NSString *)messageBody directedAt:(NSString *)messageTo encodingCallback:(TLOEncryptionManagerEncodingDecodingCallbackBlock)encodingCallback injectionCallback:(TLOEncryptionManagerInjectCallbackBlock)injectionCallback;
@@ -244,9 +243,9 @@ TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
 - (void)toggleAwayStatus:(BOOL)setAway withReason:(NSString *)reason;
 
 - (void)createChannelListDialog;
-- (void)createChanBanListDialog;
-- (void)createChanBanExceptionListDialog;
-- (void)createChanInviteExceptionListDialog;
+- (void)createChannelInviteExceptionListSheet;
+- (void)createChannelBanExceptionListSheet;
+- (void)createChannelBanListSheet;
 
 - (void)presentCertificateTrustInformation;
 
@@ -307,12 +306,12 @@ TEXTUAL_EXTERN NSString * const IRCClientConfigurationWasUpdatedNotification;
 
 /* ------ */
 - (void)printToWebView:(id)channel													// An IRCChannel or nil for the console.
-				  type:(TVCLogLineType)type											// The time the message was received at for the timestamp.
-			   command:(NSString *)command											// The line type. See TVCLogLine.h
+				  type:(TVCLogLineType)type											// The line type. See TVCLogLine.h
+			   command:(NSString *)command											// Can be the actual command (PRIVMSG, NOTICE, etc.) or a raw numeric (001, 002, etc.) — TVCLogLineDefaultRawCommandValue = internal debug command.
 			  nickname:(NSString *)nickname											// The nickname associated with the print.
 		   messageBody:(NSString *)messageBody										// The actual text being printed.
 		   isEncrypted:(BOOL)isEncrypted											// Is the text encrypted? This flag DOES NOT encrypt it. It informs the WebView if it was in fact encrypted so it can be treated with more privacy.
-			receivedAt:(NSDate *)receivedAt											// Can be the actual command (PRIVMSG, NOTICE, etc.) or a raw numeric (001, 002, etc.) — TVCLogLineDefaultRawCommandValue = internal debug command.
+			receivedAt:(NSDate *)receivedAt											// The time the message was received at for the timestamp.
 	  referenceMessage:(IRCMessage *)referenceMessage								// Actual IRCMessage to associate with the print job.
 	   completionBlock:(IRCClientPrintToWebViewCallbackBlock)completionBlock;		// A block to call when the actual print occurs.
 /* ------ */

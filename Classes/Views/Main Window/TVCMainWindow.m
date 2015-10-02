@@ -38,6 +38,10 @@
 
 #import "TextualApplication.h"
 
+#if TEXTUAL_BUILT_WITH_LICENSE_MANAGER == 1
+#import "TLOLicenseManager.h"
+#endif
+
 #define _treeDragItemType		@"tree"
 #define _treeDragItemTypes		[NSArray arrayWithObject:_treeDragItemType]
 
@@ -96,6 +100,8 @@
 		[self.inputTextField setBackgroundColor:[NSColor clearColor]];
 		
 		[self.contentSplitView restorePositions];
+
+		[self collapseMemberListForHiddenPreference];
 		
 		[self registerKeyHandlers];
 		
@@ -115,6 +121,8 @@
 		[self.memberList setDoubleAction:@selector(memberInMemberListDoubleClicked:)];
 
 		[masterController() performAwakeningAfterMainWindowDidLoad];
+
+		[self observeNotifications];
 	}
 }
 
@@ -126,6 +134,13 @@
 	[self.serverList setDataSource:nil];
 	
 	[self.serverList setKeyDelegate:nil];
+}
+
+- (void)observeNotifications
+{
+	if ([XRSystemInformation isUsingOSXYosemiteOrLater]) {
+		[RZWorkspaceNotificationCenter() addObserver:self selector:@selector(accessibilityDisplayOptionsDidChange:) name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification object:nil];
+	}
 }
 
 - (void)maybeToggleFullscreenAfterLaunch
@@ -142,6 +157,11 @@
 	if ([self isInFullscreenMode] == NO) {
 		[self toggleFullScreen:nil];
 	}
+}
+
+- (void)accessibilityDisplayOptionsDidChange:(NSNotification *)aNote
+{
+	[self updateBackgroundColor];
 }
 
 - (void)updateBackgroundColor
@@ -166,6 +186,24 @@
 	[self.contentView setNeedsDisplay:YES];
 }
 
+- (void)updateAlphaValueToReflectPreferences
+{
+	[self updateAlphaValueToReflectPreferencesAnimiated:NO];
+}
+
+- (void)updateAlphaValueToReflectPreferencesAnimiated:(BOOL)animate
+{
+	if ([self isInFullscreenMode] == NO) {
+		double alphaValue = [TPCPreferences themeTransparency];
+
+		if (animate) {
+			[[self animator] setAlphaValue:alphaValue];
+		} else {
+			[self setAlphaValue:alphaValue];
+		}
+	}
+}
+
 - (void)loadWindowState
 {
 	[self restoreWindowStateUsingKeyword:@"Main Window"];
@@ -184,6 +222,8 @@
 
 - (void)prepareForApplicationTermination
 {
+	[RZNotificationCenter() removeObserver:self];
+
 	[self saveWindowState];
 
 	[self setDelegate:nil];
@@ -303,6 +343,16 @@
 - (NSApplicationPresentationOptions)window:(NSWindow *)window willUseFullScreenPresentationOptions:(NSApplicationPresentationOptions)proposedOptions
 {
 	return (NSApplicationPresentationFullScreen | NSApplicationPresentationHideDock | NSApplicationPresentationAutoHideMenuBar);
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification
+{
+	[self updateAlphaValueToReflectPreferencesAnimiated:YES];
+}
+
+- (void)windowWillEnterFullScreen:(NSNotification *)notification
+{
+	[[self animator] setAlphaValue:1.0];
 }
 
 - (id)windowWillReturnFieldEditor:(NSWindow *)sender toObject:(id)client
@@ -585,8 +635,6 @@
 
 - (void)tab:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
 	TXTabKeyAction tabKeyAction = [TPCPreferences tabKeyAction];
 	
 	if (tabKeyAction == TXTabKeyNickCompleteAction) {
@@ -598,8 +646,6 @@
 
 - (void)shiftTab:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
 	TXTabKeyAction tabKeyAction = [TPCPreferences tabKeyAction];
 	
 	if (tabKeyAction == TXTabKeyNickCompleteAction) {
@@ -620,8 +666,6 @@
 
 - (void)sendMsgAction:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
 	if ([TPCPreferences commandReturnSendsMessageAsAction]) {
 		[self sendText:IRCPrivateCommandIndex("action")];
 	} else {
@@ -631,8 +675,6 @@
 
 - (void)moveInputHistory:(BOOL)up checkScroller:(BOOL)scroll event:(NSEvent *)event
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
 	if (scroll) {
 		NSInteger nol = [self.inputTextField numberOfLines];
 		
@@ -661,7 +703,6 @@
 	
 	if (s) {
 		[self.inputTextField setAttributedStringValue:s];
-		[self.inputTextField resetTextFieldCellSize:NO];
 		[self.inputTextField focus];
 	}
 }
@@ -688,9 +729,7 @@
 
 - (void)textFormattingBold:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
-	if ([self.formattingMenu boldSet]) {
+	if ([self.formattingMenu textIsBold]) {
 		[self.formattingMenu removeBoldCharFromTextBox:nil];
 	} else {
 		[self.formattingMenu insertBoldCharIntoTextBox:nil];
@@ -699,20 +738,25 @@
 
 - (void)textFormattingItalic:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
-	if ([self.formattingMenu italicSet]) {
+	if ([self.formattingMenu textIsItalicized]) {
 		[self.formattingMenu removeItalicCharFromTextBox:nil];
 	} else {
 		[self.formattingMenu insertItalicCharIntoTextBox:nil];
 	}
 }
 
+- (void)textFormattingStrikethrough:(NSEvent *)e
+{
+	if ([self.formattingMenu textIsStruckthrough]) {
+		[self.formattingMenu removeStrikethroughCharFromTextBox:nil];
+	} else {
+		[self.formattingMenu insertStrikethroughCharIntoTextBox:nil];
+	}
+}
+
 - (void)textFormattingUnderline:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
-	if ([self.formattingMenu underlineSet]) {
+	if ([self.formattingMenu textIsUnderlined]) {
 		[self.formattingMenu removeUnderlineCharFromTextBox:nil];
 	} else {
 		[self.formattingMenu insertUnderlineCharIntoTextBox:nil];
@@ -721,9 +765,7 @@
 
 - (void)textFormattingForegroundColor:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
-	if ([self.formattingMenu foregroundColorSet]) {
+	if ([self.formattingMenu textHasForegroundColor]) {
 		[self.formattingMenu removeForegroundColorCharFromTextBox:nil];
 	} else {
 		NSRect fieldRect = [self.inputTextField frame];
@@ -737,19 +779,19 @@
 
 - (void)textFormattingBackgroundColor:(NSEvent *)e
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-	
-	if ([self.formattingMenu foregroundColorSet]) {
-		if ([self.formattingMenu backgroundColorSet]) {
-			[self.formattingMenu removeForegroundColorCharFromTextBox:nil];
-		} else {
-			NSRect fieldRect = [self.inputTextField frame];
-			
-			fieldRect.origin.y -= 200;
-			fieldRect.origin.x += 100;
-			
-			[[self.formattingMenu backgroundColorMenu] popUpMenuPositioningItem:nil atLocation:fieldRect.origin inView:self.inputTextField];
-		}
+	if ([self.formattingMenu textHasForegroundColor] == NO) {
+		return;
+	}
+
+	if ([self.formattingMenu textHasBackgroundColor]) {
+		[self.formattingMenu removeForegroundColorCharFromTextBox:nil];
+	} else {
+		NSRect fieldRect = [self.inputTextField frame];
+		
+		fieldRect.origin.y -= 200;
+		fieldRect.origin.x += 100;
+		
+		[[self.formattingMenu backgroundColorMenu] popUpMenuPositioningItem:nil atLocation:fieldRect.origin inView:self.inputTextField];
 	}
 }
 
@@ -769,9 +811,9 @@
 
 - (void)focusWebview
 {
-	TVCMainWindowNegateActionWithAttachedSheet();
-
-	[self makeFirstResponder:[[self selectedViewController] webView]];
+	if ([self attachedSheet] == nil) {
+		[self makeFirstResponder:[[self selectedViewController] webView]];
+	}
 }
 
 - (void)handler:(SEL)sel code:(NSInteger)keyCode mods:(NSUInteger)mods
@@ -841,7 +883,7 @@
 {
 	NSAttributedString *as = [self.inputTextField attributedStringValue];
 	
-	[self.inputTextField setAttributedStringValue:[NSAttributedString emptyString]];
+	[self.inputTextField setAttributedStringValue:[NSAttributedString attributedString]];
 	
 	if ([as length] > 0) {
 		[[TXSharedApplication sharedInputHistoryManager] add:as];
@@ -849,7 +891,7 @@
 		[self inputText:as command:command];
 	}
 	
-	[[TXSharedApplication sharedNicknameCompletionStatus] clear:YES];
+	[[TXSharedApplication sharedNicknameCompletionStatus] clear];
 }
 
 - (void)inputText:(id)str command:(NSString *)command
@@ -1034,6 +1076,17 @@
 #pragma mark -
 #pragma mark Split View
 
+- (void)collapseMemberListForHiddenPreference
+{
+	BOOL collapseMemberList = [RZUserDefaults() boolForKey:@"UserListHideOnLaunch"];
+
+	if (collapseMemberList) {
+		[self.memberList setIsHiddenByUser:YES];
+
+		[self.contentSplitView collapseMemberList];
+	}
+}
+
 - (BOOL)isMemberListVisible
 {
 	return ([self.contentSplitView isMemberListCollapsed] == NO);
@@ -1047,16 +1100,31 @@
 #pragma mark -
 #pragma mark Loading Screen
 
-- (void)reloadLoadingScreen
+- (BOOL)reloadLoadingScreen
 {
+	/* This method returns YES (success) if the loading screen is dismissed
+	 when called. NO indicates an error that resulted in it staying on screen. */
+
 	if ([worldController() isPopulatingSeeds] == NO) {
+
+#if TEXTUAL_BUILT_WITH_LICENSE_MANAGER == 1
+		if (TLOLicenseManagerTextualIsRegistered() == NO && TLOLicenseManagerIsTrialExpired()) {
+			[self.loadingScreen hideAll:NO];
+			[self.loadingScreen popTrialExpiredView];
+		} else
+#endif
+
 		if ([worldController() clientCount] <= 0) {
 			[self.loadingScreen hideAll:NO];
 			[self.loadingScreen popWelcomeAddServerView];
 		} else {
 			[self.loadingScreen hideAll:YES];
+
+			return YES;
 		}
 	}
+
+	return NO;
 }
 
 #pragma mark -
@@ -1071,7 +1139,7 @@
 	}
 }
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 - (void)titlebarAccessoryViewLockButtonClicked:(id)sender
 {
 	NSMenu *statusMenu = [menuController() encryptionManagerStatusMenu];
@@ -1086,7 +1154,7 @@
 {
 	IRCClient *u = self.selectedClient;
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 	IRCChannel *c = self.selectedChannel;
 
 	BOOL updateEncryption = ([c isPrivateMessage] && [u encryptionAllowedForNickname:[c name]]);
@@ -1120,26 +1188,28 @@
 			[self.titlebarAccessoryView setHidden:YES];
 		}
 
-#ifdef TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION
+#if TEXTUAL_BUILT_WITH_ADVANCED_ENCRYPTION == 1
 	}
+#endif
 
 	if ([self.titlebarAccessoryView isHidden] == NO) {
 		[self.titlebarAccessoryViewLockButton sizeToFit];
 	}
-#endif
 }
 
 - (void)addAccessoryViewsToTitlebar
 {
+	NSView *themeFrame = [[self contentView] superview];
+
 	if ([XRSystemInformation isUsingOSXYosemiteOrLater]) {
+		[themeFrame setUsesCustomTitlebarTitlePositioning:YES];
+
 		NSTitlebarAccessoryViewController *accessoryView = [self titlebarAccessoryViewController];
 
 		[accessoryView setLayoutAttribute:NSLayoutAttributeRight];
 
 		[self addTitlebarAccessoryViewController:accessoryView];
 	} else {
-		NSView *themeFrame = [[self contentView] superview];
-
 		NSView *accessoryView = [self titlebarAccessoryView];
 
 		[themeFrame addSubview:accessoryView];
@@ -1224,8 +1294,10 @@
 		
 		if ([c isChannel]) {
 			/* We always want the channel name and user count. */
+			NSString *userCount = TXFormattedNumber([c numberOfMembers]);
+
 			[title appendString:[c name]];
-			[title appendString:BLS(1007, [c numberOfMembers])];
+			[title appendString:BLS(1007, userCount)];
 			
 			/* If we are aware of the channel modes, then we append that. */
 			NSString *modes = [[c modeInfo] titleString];
@@ -1238,6 +1310,8 @@
 	
 	/* Set final title. */
 	[self setTitle:title];
+
+	[XRAccessibility setAccessibilityTitle:TXTLS(@"BasicLanguage[1281]") forObject:self];
 }
 
 #pragma mark -
@@ -1703,7 +1777,12 @@
 	}
 	
 	/* Begin work on text field. */
-	[self.inputTextField focus];
+	BOOL autoFocusInputTextField = [RZUserDefaults() boolForKey:@"Main Input Text Field -> Focus When Changing Views"];
+
+	if (autoFocusInputTextField && [XRAccessibility isVoiceOverEnabled] == NO) {
+		[self.inputTextField focus];
+	}
+
 	[self.inputTextField updateSegmentedController];
 	
 	/* Setup text field value with history item when we have
@@ -1753,26 +1832,22 @@
 
 - (NSDragOperation)outlineView:(NSOutlineView *)sender validateDrop:(id <NSDraggingInfo>)info proposedItem:(id)item proposedChildIndex:(NSInteger)index
 {
-	/* Validate dragging index. */
 	if (index < 0) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate pasteboard types. */
+
 	NSPasteboard *pboard = [info draggingPasteboard];
 	
 	if ([pboard availableTypeFromArray:_treeDragItemTypes] == nil) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate pasteboard contents. */
+
 	NSString *infoStr = [pboard propertyListForType:_treeDragItemType];
 	
 	if (infoStr == nil) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate selection. */
+
 	IRCTreeItem *i = [worldController() findItemFromPasteboardString:infoStr];
 	
 	if (i == nil) {
@@ -1784,14 +1859,12 @@
 			return NSDragOperationNone;
 		}
 	} else {
-		/* Validate input. */
 		if (item == nil) {
 			return NSDragOperationNone;
 		}
 		
 		IRCChannel *c = (IRCChannel *)i;
-		
-		/* Do not allow dragging between clients. */
+
 		if (NSDissimilarObjects(item, [c associatedClient])) {
 			return NSDragOperationNone;
 		}
@@ -1799,128 +1872,113 @@
 		IRCClient *toClient = (IRCClient *)item;
 		
 		NSArray *ary = [toClient channelList];
-		
-		/* Get list of items below and above insertion point. */
+
 		NSMutableArray *low = [ary mutableSubarrayWithRange:NSMakeRange(0, index)];
 		NSMutableArray *high = [ary mutableSubarrayWithRange:NSMakeRange(index, ([ary count] - index))];
-		
-		/* Remove item from copies. */
+
 		[low removeObjectIdenticalTo:c];
 		[high removeObjectIdenticalTo:c];
-		
-		/* Validate drop positions based on simple logic. */
+
+		IRCChannel *nextItem = nil;
+		IRCChannel *previousItem = nil;
+
+		if ([low count] > 0) {
+			previousItem = [low lastObject];
+		}
+
+		if ([high count] > 0) {
+			nextItem = high[0];
+		}
+
 		if ([c isChannel]) {
-			if ([low count] > 0) {
-				IRCChannel *prev = [low lastObject];
-				
-				if ([prev isChannel] == NO) {
-					return NSDragOperationNone;
-				}
+			if (previousItem && [previousItem isChannel] == NO) {
+				return NSDragOperationNone;
 			}
 		} else {
-			if ([high count] > 0) {
-				IRCChannel *next = high[0];
-				
-				if ([next isChannel]) {
-					return NSDragOperationNone;
-				}
+			if ([nextItem isChannel]) {
+				return NSDragOperationNone;
 			}
 		}
 	}
-	
+
 	return NSDragOperationGeneric;
 }
 
 - (BOOL)outlineView:(NSOutlineView *)sender acceptDrop:(id <NSDraggingInfo>)info item:(id)item childIndex:(NSInteger)index
 {
-	/* Validate dragging index. */
 	if (index < 0) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate pasteboard types. */
+
 	NSPasteboard *pboard = [info draggingPasteboard];
 	
 	if ([pboard availableTypeFromArray:_treeDragItemTypes] == nil) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate pasteboard contents. */
+
 	NSString *infoStr = [pboard propertyListForType:_treeDragItemType];
 	
 	if (infoStr == nil) {
 		return NSDragOperationNone;
 	}
-	
-	/* Validate selection. */
+
 	IRCTreeItem *i = [worldController() findItemFromPasteboardString:infoStr];
 	
 	if (i == nil) {
 		return NSDragOperationNone;
 	}
-	
+
 	if ([i isClient]) {
 		if (item) {
 			return NO;
 		}
-		
-		/* Get client list as we are rearranging servers. */
+
 		NSArray *ary = [worldController() clientList];
-		
-		/* Split array up. */
+
 		NSMutableArray *mutary = [ary mutableCopy];
 		
 		NSMutableArray *low = [ary mutableSubarrayWithRange:NSMakeRange(0, index)];
 		NSMutableArray *high = [ary mutableSubarrayWithRange:NSMakeRange(index, ([ary count] - index))];
-		
-		/* Log important info. */
+
 		NSInteger originalIndex = [ary indexOfObject:i];
-		
-		/* Remove any mentions of object. */
+
 		[low removeObjectIdenticalTo:i];
 		[high removeObjectIdenticalTo:i];
-		
-		/* Clear the butter. */
+
 		[mutary removeAllObjects];
-		
-		/* Build new array. */
+
 		[mutary addObjectsFromArray:low];
 		[mutary addObject:i];
 		[mutary addObjectsFromArray:high];
 		
 		[worldController() setClientList:mutary];
 
-		/* Move the item. */
-		[self.serverList moveItemAtIndex:originalIndex inParent:nil toIndex: index inParent:nil];
+		if (originalIndex < index) {
+			[self.serverList moveItemAtIndex:originalIndex inParent:nil toIndex:(index - 1) inParent:nil];
+		} else {
+			[self.serverList moveItemAtIndex:originalIndex inParent:nil toIndex: index inParent:nil];
+		}
 	}
 	else
 	{
-		/* Perform some basic validation. */
 		if (item == nil || NSDissimilarObjects(item, [i associatedClient])) {
 			return NO;
 		}
-		
-		/* We are client. */
+
 		IRCClient *u = (IRCClient *)item;
-		
-		/* Some comment that is supposed to tell you whats happening. */
+
 		NSArray *ary = [u channelList];
 		
 		NSMutableArray *mutary = [ary mutableCopy];
-		
-		/* Another comment talking about stuff nobody cares about. */
+
 		NSMutableArray *low = [ary mutableSubarrayWithRange:NSMakeRange(0, index)];
 		NSMutableArray *high = [ary mutableSubarrayWithRange:NSMakeRange(index, ([ary count] - index))];
-		
-		/* :) */
+
 		NSInteger originalIndex = [ary indexOfObject:i];
-		
-		/* Something, something... */
+
 		[low removeObjectIdenticalTo:i];
 		[high removeObjectIdenticalTo:i];
-		
-		/* Clinteger if you are reading this, then I hope France
-		 flops hard in the World Cup. Go Germany? */
+
 		[mutary removeAllObjects];
 		
 		[mutary addObjectsFromArray:low];
@@ -1928,26 +1986,22 @@
 		[mutary addObjectsFromArray:high];
 		
 		[u setChannelList:mutary];
-		
-		/* And I just want this refacotring to be over with. */
+
 		if (originalIndex < index) {
 			[self.serverList moveItemAtIndex:originalIndex inParent:u toIndex:(index - 1) inParent:u];
 		} else {
 			[self.serverList moveItemAtIndex:originalIndex inParent:u toIndex: index inParent:u];
 		}
 	}
-	
-	/* Update selection. */
+
 	NSInteger n = [self.serverList rowForItem:self.selectedItem];
 	
 	if (n > -1) {
 		[self.serverList selectItemAtIndex:n];
 	}
-	
-	/* Order changed so should our keyboard shortcuts. */
+
 	[menuController() populateNavgiationChannelList];
-	
-	/* Conclude drag operation. */
+
 	return YES;
 }
 

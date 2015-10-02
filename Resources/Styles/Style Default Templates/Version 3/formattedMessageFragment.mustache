@@ -1,5 +1,5 @@
 {{#inlineNicknameMatchFound}}
-<span class="inline_nickname" ondblclick="Textual.inlineNicknameDoubleClicked()" oncontextmenu="Textual.openInlineNicknameContextualMenu()" colornumber="{{inlineNicknameColorNumber}}">
+<span class="inline_nickname" ondblclick="Textual.inlineNicknameDoubleClicked()" oncontextmenu="Textual.openInlineNicknameContextualMenu()" mode="{{inlineNicknameUserModeSymbol}}" colornumber="{{inlineNicknameColorNumber}}">
 {{/inlineNicknameMatchFound}}
 {{#fragmentTextColorIsSet}}
 <span class="effect"
@@ -12,11 +12,13 @@
 {{/fragmentTextColorIsSet}}
 {{#fragmentIsBold}}<b>{{/fragmentIsBold}}
 {{#fragmentIsItalicized}}<i>{{/fragmentIsItalicized}}
+{{#fragmentIsStruckthrough}}<del>{{/fragmentIsStruckthrough}}
 {{#fragmentIsUnderlined}}<u>{{/fragmentIsUnderlined}}
 {{#inlineNicknameMatchFound}}{{inlineNicknameUserModeSymbol}}{{/inlineNicknameMatchFound}}
 {{{messageFragment}}}
 {{#fragmentIsBold}}</b>{{/fragmentIsBold}}
 {{#fragmentIsItalicized}}</i>{{/fragmentIsItalicized}}
+{{#fragmentIsStruckthrough}}</del>{{/fragmentIsStruckthrough}}
 {{#fragmentIsUnderlined}}</u>{{/fragmentIsUnderlined}}
 {{#fragmentTextColorIsSet}}
 </span>

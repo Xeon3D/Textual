@@ -62,8 +62,9 @@
 
 		/* These are the default values. Any class using this one is expected
 		 to define their own values at some point. */
-		[self setPreferredFont:[NSFont systemFontOfSize:12.0]];
-		[self setPreferredFontColor:[NSColor blueColor]];
+		[self setPreferredFont:[self font]];
+		
+		[self setPreferredFontColor:[self textColor]];
     }
 	
     return self;
@@ -71,10 +72,8 @@
 
 - (void)mouseDown:(NSEvent *)theEvent
 {
-	/* Make ourself the first responder. */
     [[self window] makeFirstResponder:self];
 
-	/* Pass event to super. */
     [super mouseDown:theEvent];
 }
 
@@ -135,66 +134,18 @@
 
 - (void)setAttributedStringValue:(NSAttributedString *)string
 {
-	/* Wipe any undo actions already stored. */
 	[[self undoManager] removeAllActions];
-	
-	/* Set new value. */
-	NSData *stringData = [string RTFFromRange:NSMakeRange(0, [string length]) documentAttributes:nil];
 
-    [self replaceCharactersInRange:[self fullSelectionRange] withRTF:stringData];
+	[[self textStorage] replaceCharactersInRange:[self range] withAttributedString:string];
 
-	/* Inform others of the change. */
 	[self didChangeText];
 }
 
 - (void)setStringValue:(NSString *)string
 {
-	/* Set new value. */
-    [self replaceCharactersInRange:[self fullSelectionRange] withString:string];
-	
-	/* Inform others of the change. */
+    [[self textStorage] replaceCharactersInRange:[self range] withString:string];
+
 	[self didChangeText];
-}
-
-#pragma mark -
-#pragma mark Attribute Management
-
-- (void)addUndoActionForAttributes:(NSDictionary *)attributes inRange:(NSRange)local
-{
-	if (NSObjectIsEmpty(attributes) || NSRangeIsValid(local) == NO) {
-		return;
-	}
-	
-	[[self undoManager] registerUndoWithTarget:self
-									  selector:@selector(setAttributesWithContext:)
-										object:@[attributes, NSStringFromRange(local)]];
-}
-
-- (void)setAttributesWithContext:(NSArray *)contextArray /* @private */
-{
-	NSRange local = NSRangeFromString(contextArray[1]);
-	
-	NSDictionary *attrs = [[self attributedString] attributesAtIndex:0
-											   longestEffectiveRange:NULL
-															 inRange:local];
-	
-	[[self undoManager] registerUndoWithTarget:self
-									  selector:@selector(setAttributesWithContext:)
-										object:@[attrs, NSStringFromRange(local)]];
-	
-	[self setAttributes:contextArray[0] inRange:local];
-}
-
-#pragma mark -
-
-- (void)removeAttribute:(id)attr inRange:(NSRange)local
-{
-    [[self textStorage] removeAttribute:attr range:local];
-}
-
-- (void)setAttributes:(id)attrs inRange:(NSRange)local
-{
-	[[self textStorage] addAttributes:attrs range:local];
 }
 
 #pragma mark -
@@ -205,7 +156,6 @@
 		[self resetTypeSetterAttributes];
 	}
 
-	/* Internal text did change notification. */
 	if ([self respondsToSelector:@selector(internalTextDidChange:)]) {
 		[self performSelector:@selector(internalTextDidChange:) withObject:aNotification];
 	}
@@ -218,8 +168,9 @@
 	CGFloat newPointSize = [self.preferredFont pointSize];
 
     [[self textStorage] beginEditing];
+
     [[self textStorage] enumerateAttribute:NSFontAttributeName
-								inRange:[self fullSelectionRange]
+								inRange:[self range]
 								options:0
 							usingBlock:^(id value, NSRange range, BOOL *stop)
 	{
@@ -248,9 +199,7 @@
 	} else {
 		_preferredFont = [preferredFont copy];
 
-		[self setTypingAttributes:@{NSFontAttributeName : _preferredFont}];
-
-		[self setFont:_preferredFont];
+		[self modifyTypingAttributes:@{NSFontAttributeName : _preferredFont}];
 	}
 }
 
@@ -261,9 +210,8 @@
 	} else {
 		_preferredFontColor = [preferredFontColor copy];
 
-		[self setTypingAttributes:@{NSForegroundColorAttributeName : _preferredFontColor}];
+		[self modifyTypingAttributes:@{NSForegroundColorAttributeName : _preferredFontColor}];
 
-		[self setTextColor:_preferredFontColor];
 		[self setInsertionPointColor:_preferredFontColor];
 	}
 }
@@ -272,13 +220,27 @@
 {
 	[self setTypingAttributes:@{
 		NSFontAttributeName : self.preferredFont,
+
 		NSForegroundColorAttributeName : self.preferredFontColor
 	}];
 }
 
+- (void)modifyTypingAttributes:(NSDictionary *)typingAttributes
+{
+	NSMutableDictionary *existingAttributes = [[self typingAttributes] mutableCopy];
+
+	[existingAttributes addEntriesFromDictionary:typingAttributes];
+
+	[self setTypingAttributes:existingAttributes];
+}
+
 - (void)resetTextColorInRange:(NSRange)range
 {
-	[self setTextColor:self.preferredFontColor range:range];
+	NSDictionary *newAttributes = @{
+		NSForegroundColorAttributeName : self.preferredFontColor
+	};
+
+	[[self textStorage] addAttributes:newAttributes range:range];
 }
 
 #pragma mark -

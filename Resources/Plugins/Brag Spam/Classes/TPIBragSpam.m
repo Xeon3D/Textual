@@ -56,9 +56,6 @@
 						  commandString:(NSString *)commandString
 						  messageString:(NSString *)messageString
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
 	if ([commandString isEqualToString:@"BRAG"]) {
 		IRCChannel *selectedChannel = [mainWindow() selectedChannel];
 
@@ -93,7 +90,15 @@
 				channelCount += 1;
 				
 				IRCUser *myself = [ch findMember:[c localNickname]];
-				
+
+				IRCUserRank myRanks = [myself ranks];
+
+				BOOL IHaveModeQ = ((myRanks & IRCUserChannelOwnerRank) == IRCUserChannelOwnerRank);
+				BOOL IHaveModeA = ((myRanks & IRCUserSuperOperatorRank) == IRCUserSuperOperatorRank);
+				BOOL IHaveModeO = ((myRanks & IRCUserNormalOperatorRank) == IRCUserNormalOperatorRank);
+				BOOL IHaveModeH = ((myRanks & IRCUserHalfOperatorRank) == IRCUserHalfOperatorRank);
+				BOOL IHaveModeV = ((myRanks & IRCUserVoicedRank) == IRCUserVoicedRank);
+
 				if ([c hasIRCopAccess] == NO) {
 					if ([myself isCop]) {
 						[c setHasIRCopAccess:YES];
@@ -101,12 +106,12 @@
 						operCount++;
 					}
 				}
-				
-				if ([myself q] || [myself a] || [myself o]) {
+
+				if (IHaveModeQ || IHaveModeA || IHaveModeO) {
 					chanOpCount++;
-				} else if ([myself h]) {
+				} else if (IHaveModeH) {
 					chanHopCount++;
-				} else if ([myself v]) {
+				} else if (IHaveModeV) {
 					chanVopCount++;
 				}
 				
@@ -117,15 +122,22 @@
 				
 					BOOL addUser = NO;
 
+					IRCUserRank userRanks = [m ranks];
+
+					BOOL UserHasModeQ = ((userRanks & IRCUserChannelOwnerRank) == IRCUserChannelOwnerRank);
+					BOOL UserHasModeA = ((userRanks & IRCUserSuperOperatorRank) == IRCUserSuperOperatorRank);
+					BOOL UserHasModeO = ((userRanks & IRCUserNormalOperatorRank) == IRCUserNormalOperatorRank);
+					BOOL UserHasModeH = ((userRanks & IRCUserHalfOperatorRank) == IRCUserHalfOperatorRank);
+
 					if ([c hasIRCopAccess] && [m isCop] == NO) {
 						addUser = YES;
-					} else if ([myself q] && [m q] == NO) {
+					} else if (IHaveModeQ && UserHasModeQ == NO) {
 						addUser = YES;
-					} else if ([myself a] && [m q] == NO && [m a] == NO) {
+					} else if (IHaveModeA && UserHasModeQ == NO && UserHasModeA == NO) {
 						addUser = YES;
-					} else if ([myself o] && [m q] == NO && [m a] == NO && [m o] == NO) {
+					} else if (IHaveModeO && UserHasModeQ == NO && UserHasModeA == NO && UserHasModeO == NO) {
 						addUser = YES;
-					} else if ([myself h] && [m q] == NO && [m a] == NO && [m o] == NO && [m h] == NO) {
+					} else if (IHaveModeH && UserHasModeQ == NO && UserHasModeA == NO && UserHasModeO == NO && UserHasModeH == NO) {
 						addUser = YES;	
 					}
 					
@@ -156,12 +168,10 @@
 			[self appendPluralOrSingular:&resultString valueToken:1006 value:powerOverCount];
 		}
 
-		[client sendText:[NSAttributedString emptyStringWithBase:resultString]
+		[client sendText:[NSAttributedString attributedStringWithString:resultString]
 				 command:IRCPrivateCommandIndex("privmsg")
 				 channel:selectedChannel];
 	}
-
-#pragma clang diagnostic pop
 }
 
 - (NSArray *)subscribedUserInputCommands

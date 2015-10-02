@@ -81,6 +81,12 @@ NSString * const _inputHistoryGlobalObjectKey	= @"TLOInputHistoryDefaultObject";
 
 	if ([TPCPreferences inputHistoryIsChannelSpecific]) {
 		@synchronized(self.historyObjects) {
+			if ([treeItem isClient]) {
+				for (id childTreeItem in [treeItem channelList]) {
+					[self destroy:childTreeItem];
+				}
+			}
+
 			[self.historyObjects removeObjectForKey:[treeItem uniqueIdentifier]];
 		}
 	}
@@ -266,7 +272,7 @@ NSString * const _inputHistoryGlobalObjectKey	= @"TLOInputHistoryDefaultObject";
 		} else if (0 <= self.historyBufferPosition && self.historyBufferPosition < [self.historyBuffer count]) {
 			return (self.historyBuffer)[self.historyBufferPosition];
 		} else {
-			return [NSAttributedString emptyString];
+			return [NSAttributedString attributedString];
 		}
 	}
 }
@@ -289,7 +295,7 @@ NSString * const _inputHistoryGlobalObjectKey	= @"TLOInputHistoryDefaultObject";
 		if (NSObjectIsEmpty(cur) || [[cur string] isEqualToString:[s string]] == NO) {
 			[self add:s];
 			
-			return [NSAttributedString emptyString];
+			return [NSAttributedString attributedString];
 		} else {
 			self.historyBufferPosition += 1;
 			
@@ -297,7 +303,7 @@ NSString * const _inputHistoryGlobalObjectKey	= @"TLOInputHistoryDefaultObject";
 				return (self.historyBuffer)[self.historyBufferPosition];
 			}
 			
-			return [NSAttributedString emptyString];
+			return [NSAttributedString attributedString];
 		}
 	}
 }

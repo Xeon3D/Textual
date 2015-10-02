@@ -41,7 +41,7 @@
 TEXTUAL_EXTERN NSInteger const IRCConnectionDefaultServerPort;
 TEXTUAL_EXTERN NSInteger const IRCConnectionDefaultProxyPort;
 
-typedef enum TXConnectionProxyType : NSInteger {
+typedef NS_ENUM(NSUInteger, IRCConnectionSocketProxyType) {
 	IRCConnectionSocketNoProxyType = 0,
 	IRCConnectionSocketSystemSocksProxyType = 1,
 	IRCConnectionSocketSocks4ProxyType = 4,
@@ -49,7 +49,7 @@ typedef enum TXConnectionProxyType : NSInteger {
 	IRCConnectionSocketHTTPProxyType = 6,
 	IRCConnectionSocketHTTPSProxyType = 7,
 	IRCConnectionSocketTorBrowserType = 8
-} IRCConnectionSocketProxyType;
+};
 
 @interface IRCClientConfig : NSObject <NSCopying>
 @property (nonatomic, assign) BOOL autoConnect;
@@ -58,7 +58,7 @@ typedef enum TXConnectionProxyType : NSInteger {
 @property (nonatomic, assign) BOOL autojoinWaitsForNickServ;
 @property (nonatomic, assign) BOOL connectionPrefersIPv6;
 
-#ifdef TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT
+#if TEXTUAL_BUILT_WITH_ICLOUD_SUPPORT == 1
 @property (nonatomic, assign) BOOL excludedFromCloudSyncing;
 #endif
 
