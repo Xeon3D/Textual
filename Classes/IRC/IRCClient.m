@@ -890,7 +890,7 @@ NSString * const IRCClientConfigurationWasUpdatedNotification = @"IRCClientConfi
 
 - (NSString *)label
 {
-	return [self.config.connectionName uppercaseString];
+	return self.config.connectionName;
 }
 
 #pragma mark -
